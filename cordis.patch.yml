@@ -1,0 +1,13 @@
+# dsh-prompt-optimizer-button bundle patch.
+#
+# `name` is a path relative to this patch file (the bundle root), so the Loader
+# resolves the entry from wherever the package was installed (a `link:` checkout
+# in the profile or a regular node_modules copy). A bare package name would be
+# looked up in the DSH installation tree, which does not contain this package.
+#
+# To stop using the plugin, either disable this row id in the profile's
+# cordis.patch.yml (`- id: prompt-optimizer-button` / `disabled: true`) or remove
+# the bundle with `dsh plugin --profile desktop remove dsh-prompt-optimizer-button`.
+- insert:
+    - id: prompt-optimizer-button
+      name: './index.js'
