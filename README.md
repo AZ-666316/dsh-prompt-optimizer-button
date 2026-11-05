@@ -1,5 +1,9 @@
 # dsh-prompt-optimizer-button
 
+<p align="center">
+  <img src="assets/icon-512.png" alt="prompt-optimizer-button icon" width="128" height="128">
+</p>
+
 给 DSH 输入框加一个「优化提示词」小图标（sparkle）按钮，并在它旁边加一个场景徽标：位置在 **模型选择框与发送按钮之间**（麦克风/发送按钮左侧）。
 
 点一下图标，插件会把当前草稿发给宿主侧的一小段服务，用**当前选中的模型**跑一次普通的模型调用，把改写后的提示词**直接替换回输入框**：
@@ -25,6 +29,8 @@ dsh-prompt-optimizer-button/
 ├─ cordis.patch.yml    # 往 profile 组合里插入 host 行
 ├─ index.js            # 宿主侧：POST /prompt-optimizer/rewrite（ctx.llm 一次调用）
 ├─ client.js           # 浏览器侧：▸__ModuleLoader__ bundle，按钮 + portal 定位 + fetch
+├─ assets/icon-*.png   # 商店/README 图标（512/256/180）
+├─ publish/            # 商店上架草稿：awesome-entry.yml、CHECKLIST.md、PR_BODY.md
 └─ README.md
 ```
 
