@@ -1,7 +1,7 @@
 # 上架清单（prompt-optimizer-button）
 
 > 目标：GitHub 仓库 → dshmarket 商店（经 awesome-dsh-plugin PR 收录）
-> 当前本地状态：插件目录已是 git 仓库，提交 `9cb0e73 feat: prompt optimizer button 0.4.0`，无 remote。
+> 当前本地状态：插件目录已是 git 仓库，无 remote。GitHub 用户名：`AZ-666316`
 
 ## 0. 商店规则（已核实 `contributing.md`，2026-11）
 
@@ -14,10 +14,10 @@
 - CI 顺序：条目数 → `dsh.bundle` → 仓库年龄 → `awesome-lint` + 站点构建。
 - 可选：`icon:` 用 GitHub 托管的方形位图（~96px+）；`tarball:` 用 GitHub Release 预构建包；npm 可选。
 
-## 1. 建 GitHub 仓库（老大操作）
+## 1. 建 GitHub 仓库
 
-- 用户名：`OWNER`（待填）
-- 仓库名：`dsh-prompt-optimizer-button`（建议就用这个，与包名一致）
+- 账号：`AZ-666316`
+- 仓库名：`dsh-prompt-optimizer-button`（与包名一致）
 - 可见性：public；**不要**勾选自动生成 README / .gitignore / license（本地已有）
 - 建好后在仓库 Settings → Topics 加 `dsh-plugin`
 
@@ -27,18 +27,20 @@
 
 ```powershell
 cd C:\Users\10974\Documents\deepseek-harness\default-workspace\dsh-plugins\prompt-optimizer-button
-git remote add origin https://github.com/OWNER/dsh-prompt-optimizer-button.git
+git remote add origin https://github.com/AZ-666316/dsh-prompt-optimizer-button.git
 git branch -M main
 git push -u origin main
 ```
 
 如不想用命令行，也可用 GitHub Desktop 添加本地仓库后 Publish。
 
-## 3. （可选）发 npm
+## 3. 发 npm（已决定要做）
 
-- 先 `npm login`（未登录），包名 `dsh-prompt-optimizer-button` 目前未被占用。
-- `package.json` 里 `repository` 必须指回被收录的仓库（收录时 CI 会核对）。
-- 不发 npm 也能上架：在市场里会回退到 GitHub Release tarball 或整仓源码。
+- 需要 npm 账号（[npmjs.com 注册](https://www.npmjs.com/signup)），本机当前未登录：`npm login --auth-type=web`。
+- 包名 `dsh-prompt-optimizer-button` 目前未被占用。
+- `package.json` 的 `repository` 已指向 GitHub 仓库（CI 收录时核对）。
+- 发布：`npm publish`（`publishConfig.access=public` 已配好）。
+- 之后发版：改 `version` → `git tag vX.Y.Z` → `npm publish` → GitHub Release。
 
 ## 4. 等满 24 小时（CI 硬门）
 
@@ -47,12 +49,12 @@ git push -u origin main
 ## 5. 给 awesome-dsh-plugin 提 PR
 
 1. Fork `awesome-dsh-plugin/awesome-dsh-plugin`
-2. 新建 `data/plugins/OWNER__dsh-prompt-optimizer-button.yml`（内容 = `publish/awesome-entry.yml`，把 `OWNER` 换成实际用户名）
-3. 提交并开 PR，标题建议：`Add OWNER/dsh-prompt-optimizer-button`
+2. 新建 `data/plugins/AZ-666316__dsh-prompt-optimizer-button.yml`（内容 = `publish/awesome-entry.yml`，已填好）
+3. 提交并开 PR，标题建议：`Add AZ-666316/dsh-prompt-optimizer-button`
 4. PR 描述用 `publish/PR_BODY.md`
 5. 等 CI 绿 + 维护者 review（会实际装插件看效果）
 
 ## 6. 收录后
 
 - 市场与站点自动刷新（通常 1 天内）。
-- 之后每次发版：GitHub Release（tag `v0.4.0`）或 npm 发布；市场按优先级取 npm → Release tarball → 源码。
+- 之后每次发版：npm 发布 + GitHub Release（tag `v0.4.1` …）；市场按优先级取 npm → Release tarball → 源码。

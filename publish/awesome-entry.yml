@@ -1,8 +1,8 @@
-url: https://github.com/OWNER/dsh-prompt-optimizer-button
-name: OWNER/dsh-prompt-optimizer-button
+url: https://github.com/AZ-666316/dsh-prompt-optimizer-button
+name: AZ-666316/dsh-prompt-optimizer-button
 category: ui
-# Optional. The icon must be a square raster image served from GitHub (png/jpg/webp, ~96px+).
-# icon: https://raw.githubusercontent.com/OWNER/dsh-prompt-optimizer-button/main/assets/icon-180.png
+# Optional. Square raster icon served from GitHub (png/jpg/webp, ~96px+).
+icon: https://raw.githubusercontent.com/AZ-666316/dsh-prompt-optimizer-button/main/assets/icon-180.png
 description:
   en: >-
     Prompt optimizer inside the DSH composer. One click rewrites the current draft

@@ -1,47 +1,56 @@
-{
-  "name": "dsh-prompt-optimizer-button",
-  "version": "0.4.0",
-  "type": "module",
-  "description": "Sparkle button and scenario badge between the model selector and the send button: rewrites the composer draft in place with one model call (POST /prompt-optimizer/rewrite), names the scenario it detected (paper / agent / daily / english, manually pinnable) and shows the structured diagnosis and self-checks in a popover.",
-  "license": "MIT",
-  "author": "Prompt Optimizer Button contributors",
-  "engines": {
-    "dsh": ">=0.2.2-rc.1 <0.3.0-0"
-  },
-  "keywords": [
-    "dsh-plugin",
-    "dsh",
-    "prompt",
-    "prompt-optimizer",
-    "composer",
-    "scenario"
-  ],
-  "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
-    "./cordis.patch.yml": "./cordis.patch.yml"
-  },
-  "files": [
-    "index.js",
-    "client.js",
-    "cordis.patch.yml",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "immediately": true,
-      "inject": [
-        "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-conversation"
-      ]
-    }
-  }
+﻿{
+    "name":  "dsh-prompt-optimizer-button",
+    "version":  "0.4.0",
+    "type":  "module",
+    "description":  "Sparkle button and scenario badge between the model selector and the send button: rewrites the composer draft in place with one model call (POST /prompt-optimizer/rewrite), names the scenario it detected (paper / agent / daily / english, manually pinnable) and shows the structured diagnosis and self-checks in a popover.",
+    "license":  "MIT",
+    "author":  "Prompt Optimizer Button contributors",
+    "engines":  {
+                    "dsh":  "\u003e=0.2.2-rc.1 \u003c0.3.0-0"
+                },
+    "keywords":  [
+                     "dsh-plugin",
+                     "dsh",
+                     "prompt",
+                     "prompt-optimizer",
+                     "composer",
+                     "scenario"
+                 ],
+    "exports":  {
+                    ".":  "./index.js",
+                    "./client":  "./client.js",
+                    "./cordis.patch.yml":  "./cordis.patch.yml"
+                },
+    "files":  [
+                  "index.js",
+                  "client.js",
+                  "cordis.patch.yml",
+                  "README.md",
+                  "LICENSE",
+                  "assets"
+              ],
+    "publishConfig":  {
+                          "access":  "public"
+                      },
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           },
+                "client":  {
+                               "platform":  "web",
+                               "immediately":  true,
+                               "inject":  [
+                                              "@deepseek-ai/dsh-client-locale",
+                                              "@deepseek-ai/dsh-client-ui-conversation"
+                                          ]
+                           }
+            },
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/AZ-666316/dsh-prompt-optimizer-button.git"
+                   },
+    "homepage":  "https://github.com/AZ-666316/dsh-prompt-optimizer-button",
+    "bugs":  {
+                 "url":  "https://github.com/AZ-666316/dsh-prompt-optimizer-button/issues"
+             }
 }
