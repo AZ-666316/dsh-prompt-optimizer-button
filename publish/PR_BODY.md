@@ -1,53 +1,49 @@
-﻿# PR: Add AZ-666316/dsh-prompt-optimizer-button
+# Add AZ-666316/dsh-prompt-optimizer-button
 
 ## What it is
 
 A DSH client plugin that puts a small sparkle button and a scenario badge inside the
-composer, between the model selector and the send button. Clicking the sparkle rewrites
-the current draft **in place** with the model already selected in the composer 鈥?no extra
-chat turn, no assistant message, draft stays editable before sending.
+composer, between the model selector and the send button. Clicking the sparkle rewrites the
+current draft **in place** with the model already selected in the composer — no extra chat
+turn, no assistant message; the draft stays editable before sending.
 
 It classifies the draft into one of four scenarios (paper / agent task / daily question /
 English writing), runs a three-check diagnosis, and shows the result in a compact panel:
-
-1. 楠屾敹鍙垽瀹?鈥?can completion be machine-checked?
-2. 淇℃伅杩樻槸鑳藉姏 鈥?is the model missing information, capability, or task definition?
-3. 灞傜骇杩樻槸鑼冨洿 鈥?did the rewrite raise depth or widen scope?
-
-The scenario can be pinned manually from the panel, and the panel re-runs the rewrite.
+acceptance testable? missing information or capability? raising depth or widening scope?
+A scenario can be pinned manually for the next rewrite.
 
 ## Why it is different
 
-Prompt-optimizer web apps and browser extensions optimize text in a separate UI or on
-arbitrary web pages. This one runs inside an agent harness composer, so it (a) uses the
-session's current model and reasoning effort, (b) writes back into the same draft instead
-of creating a new chat turn, and (c) returns structured scenario + diagnosis rather than
-just rewritten text.
+Existing prompt optimizers are separate apps or browser extensions that open their own
+window. This one lives inside the agent harness composer, calls the model already selected
+for that session (including its reasoning effort), and returns the rewritten draft to the
+same input box without creating a turn. It is also the only one I found that returns a
+structured, three-check diagnosis next to the scenario label.
 
-## Structure
+## How it works
 
-```
-package.json          # declares dsh.bundle.patch and dsh.client
-cordis.patch.yml      # inserts this bundle into the DSH profile
-index.js              # host half: POST /prompt-optimizer/rewrite (ctx.llm, no @deepseek-ai/* imports)
-client.js             # UI half: composer badge + button, diagnosis panel, model route lookup
-publish/              # store submission drafts (this entry + checklist)
-assets/icon-*.png
-```
+- Host half: one exact HTTP route `POST /prompt-optimizer/rewrite`; it uses `ctx.llm` with a
+  single call and a compact system prompt. No `@deepseek-ai/*` imports, so it cannot block
+  the desktop startup handshake.
+- Browser half: a hand-written `window.__ModuleLoader__` bundle. It registers a cell in
+  `conversation.input.right` and uses `ReactDOM.createPortal` to place the badge/button after
+  the composer's `standardControls` block; the diagnosis panel portals to `document.body`.
+- Desktop pages (`dsh-app://app`) reach the route through the shell's fetch forwarding, so
+  the same relative `fetch()` works in the web build and the desktop build.
 
-## Compatibility / testing
+## Compatibility
 
-- Tested against DSH desktop profile `0.2.2-rc.1` (`engines.dsh: ">=0.2.2-rc.1 <0.3.0-0"`).
-- Uses only public runtime services (`ctx.llm`, `ctx.webServer`, `ctx.slots`, `ctx.locale`,
-  `ctx.modelDirectories`); no `@deepseek-ai/*` imports.
-- Host half verified with a fake-context harness (route registration, 200/400/405, JSON limits)
-  and live against `deepseek-account / deepseek-flash`; UI half verified by loading the bundle
-  and the slot registration smoke test.
-- No telemetry, no network calls other than the same-origin rewrite route.
-- MIT.
+- `package.json` declares `dsh.bundle.patch` and the repo has `cordis.patch.yml` at its root.
+- `engines.dsh`: `>=0.2.2-rc.1 <0.3.0-0`.
+- Published on npm as `dsh-prompt-optimizer-button` (repository field points here).
+- Codex / other agents: the same rules are shipped as a skill at
+  `skills/prompt-optimizer/SKILL.md` (install into `~/.codex/skills` or `~/.agents/skills`).
 
-## Screenshot
+## Screenshots
 
-(attach: composer with sparkle button + scenario badge, and the diagnosis panel open)
+![composer](https://raw.githubusercontent.com/AZ-666316/dsh-prompt-optimizer-button/main/assets/screenshots/01-composer.png)
+![diagnosis panel](https://raw.githubusercontent.com/AZ-666316/dsh-prompt-optimizer-button/main/assets/screenshots/02-diagnosis-panel.png)
 
+## Maintenance
 
+Solo maintainer, issues and PRs handled in the repository above.
