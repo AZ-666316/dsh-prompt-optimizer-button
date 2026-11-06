@@ -33,7 +33,9 @@ export const inject = [];
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_TEXT_CHARS = 20_000;
-const MAX_OUTPUT_TOKENS = 4_000;
+const MAX_OUTPUT_TOKENS = 1_800;
+/** Rewrite is a editing task, not a reasoning puzzle: low effort is both faster and less likely to pad. */
+const DEFAULT_REASONING_EFFORT = 'low';
 const REQUEST_TIMEOUT_MS = 90_000;
 const SCENARIOS = new Set(['paper', 'agent', 'daily', 'english']);
 
@@ -58,11 +60,13 @@ const SYSTEM_PROMPT = `你是提示词改写器，不执行任务、不回答用
    Q3 他们会用哪些具体方法、工具、参数？
    Q4 什么结果出现就说明判断是错的（要可证伪，不要"证明对"）？
    领域惯例不确定就写【待补：…】，不编造、不罗列通用的正确废话；数字标 [实测] 或 [推断]。
-4. 默认写验收：正文末尾加一节"## 验收标准"，表格三列：检查项 | 合格标准 | 不合格的样子。合格标准必须可机器判定或可外部核对；确实写不出就写"缺可验证判据：…"。
-5. 长度与边界：只加深度不加宽度；禁止"从 A/B/C/D 多维度评估"这类横向清单；不用人设词（"你是资深专家"），除非原稿明确要求；保留原语言、专有名词、参数名、文件名与既有格式；正文（不含验收表）默认不超过原文 2.5 倍且不超过 800 字；一稿只保留一个主任务。
+4. 验收（只在论文 / 派活的场景加；日常与英文短草稿不加）：正文末尾加一节"## 验收标准"，表格三列：检查项 | 合格标准 | 不合格的样子，**最多 3 行**，每格一句话（≤20 字）。合格标准必须可机器判定或可外部核对；确实写不出就写"缺可验证判据：…"。
+5. 长度与边界（最重要）：只加深度不加宽度；**正文默认不超过原文 1.5 倍且不超过 450 字**，论文 / 派活最多 650 字；不写开场白、不写"以下是改写后的版本"、不复述原稿、不解释改写理由；禁止"从 A/B/C/D 多维度评估"这类横向清单；不用人设词；保留原语言、专有名词、参数名、文件名与既有格式；一稿只保留一个主任务。
 6. 原稿已经足够清晰：不重写正文，只在原文后补"验收标准"一节，并在末尾加一行"原稿已达标，仅补验收"。
 
-场景增量（自己判断；判断后只按对应要求执行）：
+场景增量（先判断，判断后只按对应要求执行；按 paper → agent → daily 的顺序取最先命中，english 是叠加项、不参与排序）：
+- 判据：出现专业术语、数据 / 剂量 / 机制 / 论文或审稿措辞 → paper；草稿里有明确动作 + 交付物（输出格式、文件名、清单、命令、判定标准）→ agent；只有一句话、无交付物、不支撑决策 → daily；整段英文 → english 叠加。
+- 只要草稿里出现"输出格式 / 约束 / 交付物"中的任意一项，就按 agent 处理，不要按 daily。
 - 论文改稿 / 科研：验收表必须覆盖证据等级、竞争性解释、相关性与机制证明的区分，以及"哪些结论不能由本数据得出"。
 - 给 agent 派活：动作、输入、输出、禁止项、验收命令或失败判据必须齐全。
 - 日常一句话提问（无明确交付物、不支撑决策）：只补目标、约束、输出格式，不加验收表。
@@ -266,29 +270,36 @@ function parseModelAnswer(raw, requestedScenario) {
  * @returns {Promise<{ prompt: string, scenario: string | null, diagnosis: object | null }>}
  */
 async function rewriteViaLlm({ llm, route, text, signal, scenario }) {
-  const call = await llm.prepareCall({ provider: route.provider, model: route.model }, signal, (controls) => ({
-    ...controls,
-    maxTokens: MAX_OUTPUT_TOKENS,
-    ...(typeof route.reasoningEffort === 'string' && route.reasoningEffort !== ''
-      ? { reasoningEffort: route.reasoningEffort }
-      : {}),
-  }));
-
   const userText = scenario === undefined ? text : `${SCENARIO_HINTS[scenario]}\n\n草稿：\n${text}`;
+  const messages = [{ role: 'user', content: [{ type: 'text', text: userText }] }];
   let output = '';
   let finishKind = null;
 
-  for await (const chunk of call.stream({
-    ...call.config,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: [{ type: 'text', text: userText }] }],
-    signal,
-  })) {
-    if (chunk.type === 'text-delta' && typeof chunk.text === 'string') {
-      output += chunk.text;
-    } else if (chunk.type === 'finish') {
-      finishKind = chunk.reason?.kind ?? null;
+  const consume = async (call) => {
+    for await (const chunk of call.stream({ ...call.config, system: SYSTEM_PROMPT, messages, signal })) {
+      if (chunk.type === 'text-delta' && typeof chunk.text === 'string') {
+        output += chunk.text;
+      } else if (chunk.type === 'finish') {
+        finishKind = chunk.reason?.kind ?? null;
+      }
     }
+  };
+  const configure = (reasoningEffort) => (controls) => ({
+    ...controls,
+    maxTokens: MAX_OUTPUT_TOKENS,
+    ...(reasoningEffort === null ? {} : { reasoningEffort }),
+  });
+  const prepare = () => llm.prepareCall({ provider: route.provider, model: route.model }, signal, configure(DEFAULT_REASONING_EFFORT));
+
+  try {
+    await consume(await prepare());
+  } catch (error) {
+    const message = String(error?.message ?? error);
+    // A model that does not accept the effort id still has to work: retry once without it.
+    if (signal.aborted || !/reasoning|effort/i.test(message)) throw error;
+    output = '';
+    finishKind = null;
+    await consume(await llm.prepareCall({ provider: route.provider, model: route.model }, signal, configure(null)));
   }
 
   if (finishKind !== null && finishKind !== 'stop') {

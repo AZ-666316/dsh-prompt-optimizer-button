@@ -1,8 +1,8 @@
 {
   "name": "dsh-prompt-optimizer-button",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
-  "description": "Sparkle button and scenario badge between the model selector and the send button: rewrites the composer draft in place with one model call (POST /prompt-optimizer/rewrite), names the scenario it detected (paper / agent / daily / english, manually pinnable) and shows the structured diagnosis and self-checks in a popover.",
+  "description": "Prompt optimizer button between the model selector and send: rewrites the draft in place with one model call, with scenario detection and a compact diagnosis panel (POST /prompt-optimizer/rewrite).",
   "license": "MIT",
   "author": "Prompt Optimizer Button contributors",
   "repository": {
@@ -35,7 +35,9 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
-    "assets"
+    "assets",
+    "screenshots.json",
+    "skills"
   ],
   "publishConfig": {
     "access": "public"
