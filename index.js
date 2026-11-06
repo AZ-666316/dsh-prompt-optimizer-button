@@ -33,7 +33,7 @@ export const inject = [];
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_TEXT_CHARS = 20_000;
-const MAX_OUTPUT_TOKENS = 1_800;
+const MAX_OUTPUT_TOKENS = 4_000;
 /** Rewrite is a editing task, not a reasoning puzzle: low effort is both faster and less likely to pad. */
 const DEFAULT_REASONING_EFFORT = 'low';
 const REQUEST_TIMEOUT_MS = 90_000;
@@ -69,7 +69,7 @@ const SYSTEM_PROMPT = `你是提示词改写器，不执行任务、不回答用
 - 只要草稿里出现"输出格式 / 约束 / 交付物"中的任意一项，就按 agent 处理，不要按 daily。
 - 论文改稿 / 科研：验收表必须覆盖证据等级、竞争性解释、相关性与机制证明的区分，以及"哪些结论不能由本数据得出"。
 - 给 agent 派活：动作、输入、输出、禁止项、验收命令或失败判据必须齐全。
-- 日常一句话提问（无明确交付物、不支撑决策）：只补目标、约束、输出格式，不加验收表。
+- 日常一句话提问（无明确交付物、不支撑决策）：只补目标、约束、输出格式，不加验收表。**草稿 ≤30 字时更严：把它改写成一个具体、可回答的问题（点明对象 / 环境 / 目标），1–3 句，最多 2 处【待补：…】；不要输出编号步骤模板、不要清单、不要角色设定。**
 - 英文 / 投稿：保留术语一致性，验收表用英文，不做空泛润色。
 
 场景可以叠加：英文/投稿只影响语言与术语要求，不改变"科研"或"派活"的增量要求。用户显式指定了场景时，以用户指定为准，不要改判。
@@ -302,12 +302,20 @@ async function rewriteViaLlm({ llm, route, text, signal, scenario }) {
     await consume(await llm.prepareCall({ provider: route.provider, model: route.model }, signal, configure(null)));
   }
 
-  if (finishKind !== null && finishKind !== 'stop') {
-    const label = finishKind === 'max-tokens' ? '输出被截断（达到 max tokens），请缩短草稿后重试' : `model call ended with ${finishKind}`;
-    throw new Error(label);
-  }
   const trimmed = output.trim();
   if (trimmed === '') throw new Error('model returned no text');
+  if (finishKind !== null && finishKind !== 'stop') {
+    if (finishKind === 'max-tokens') {
+      // The prompt section is usually complete even when the tail was cut: keep it rather than failing.
+      const hasPromptSection = /(^|\n)\s*PROMPT:\s*\n[\s\S]*\S/.test(trimmed);
+      if (hasPromptSection) {
+        const partial = parseModelAnswer(trimmed, scenario);
+        if (partial.prompt) return { ...partial, truncated: true };
+      }
+      throw new Error('输出被截断（达到 max tokens），请缩短草稿或重试');
+    }
+    throw new Error(`model call ended with ${finishKind}`);
+  }
   return parseModelAnswer(trimmed, scenario);
 }
 
