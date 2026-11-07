@@ -4,6 +4,14 @@
   <img src="assets/icon-512.png" alt="prompt-optimizer-button icon" width="128" height="128">
 </p>
 
+## 演示
+
+<p align="center">
+  <img src="assets/screenshots/00-demo.gif" alt="点击按钮后草稿被就地改写，并弹出场景与诊断面板" width="720">
+</p>
+
+录屏约 8 秒：输入草稿 → 点星星 → 面板弹出（场景 + 三条自检）→ 改写结果直接替换回输入框。
+
 ## Codex / 其他 agent 用法（skill）
 
 Codex 的输入框没有插件接口，做不到在 composer 里加按钮；但可以用 **skill** 版：`skills/prompt-optimizer/SKILL.md`，规则与宿主侧一致（判场景 + 三自检 + 四问 + 长度红线 + 固定输出格式）。
