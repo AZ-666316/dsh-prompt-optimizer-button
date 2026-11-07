@@ -65,12 +65,16 @@ window.__ModuleLoader__.load({
       'scenario.english': '英文',
       'scenario.add': '新增场景',
       'panel.create': '新建场景',
+      'panel.edit': '编辑场景',
       'panel.customHint': '自定义场景保存在本机浏览器，只影响你自己的这一份界面。',
       'field.name': '名称',
       'field.instruction': '说明 / 提示词',
       'placeholder.name': '例如：代码审查',
       'placeholder.instruction': '这个场景要求怎样改写？例如：只补动作、输入、输出、禁止项与验收命令。',
       'form.save': '保存并使用',
+      'form.update': '保存修改',
+      'form.edit': '编辑',
+      'form.delete': '删除',
       'form.cancel': '取消',
       'form.error.name': '请填写场景名称',
       'form.error.instruction': '请填写说明或提示词',
@@ -103,12 +107,16 @@ window.__ModuleLoader__.load({
       'scenario.english': 'English',
       'scenario.add': 'Add scenario',
       'panel.create': 'New scenario',
+      'panel.edit': 'Edit scenario',
       'panel.customHint': 'Custom scenarios are stored in this browser and only affect your own UI.',
       'field.name': 'Name',
       'field.instruction': 'Instruction',
       'placeholder.name': 'e.g. Code review',
       'placeholder.instruction': 'How should this scenario rewrite? e.g. Only add action, inputs, outputs, prohibitions and acceptance commands.',
       'form.save': 'Save & use',
+      'form.update': 'Save changes',
+      'form.edit': 'Edit',
+      'form.delete': 'Delete',
       'form.cancel': 'Cancel',
       'form.error.name': 'Enter a scenario name',
       'form.error.instruction': 'Enter the instruction for this scenario',
@@ -321,6 +329,46 @@ window.__ModuleLoader__.load({
         font-size: 13px;
         font-weight: 600;
         line-height: 15px;
+      }
+      .dsh-prompt-opt-chip-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      .dsh-prompt-opt-chip-label {
+        padding: 3px 4px 3px 9px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-size: 11.5px;
+        line-height: 17px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .dsh-prompt-opt-chip-mini {
+        padding: 2px 4px;
+        border: 0;
+        background: transparent;
+        color: rgba(244, 244, 245, 0.5);
+        font: inherit;
+        font-size: 11px;
+        line-height: 15px;
+        cursor: pointer;
+        transition: background-color 0.13s ease, color 0.13s ease;
+      }
+      .dsh-prompt-opt-chip-mini:last-child {
+        padding-right: 7px;
+      }
+      .dsh-prompt-opt-chip-mini:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: rgba(244, 244, 245, 0.95);
+      }
+      .dsh-prompt-opt-chip-mini[data-danger="true"]:hover {
+        background: rgba(229, 72, 77, 0.24);
+        color: #ffb3b6;
       }
       .dsh-prompt-opt-form {
         display: flex;
@@ -678,6 +726,7 @@ window.__ModuleLoader__.load({
       const [tip, setTip] = React.useState(null);
       const [customs, setCustoms] = React.useState(readCustomScenarios);
       const [creating, setCreating] = React.useState(false);
+      const [editingId, setEditingId] = React.useState(null);
       const [draftName, setDraftName] = React.useState('');
       const [draftInstruction, setDraftInstruction] = React.useState('');
       const [formError, setFormError] = React.useState('');
@@ -896,20 +945,48 @@ window.__ModuleLoader__.load({
           setFormError(t('form.error.instruction'));
           return;
         }
-        if (customs.some((item) => item.label === name)) {
+        if (customs.some((item) => item.label === name && item.id !== editingId)) {
           setFormError(t('form.error.duplicate'));
           return;
         }
-        const item = { id: createCustomId(), label: name, instruction };
-        const next = [...customs, item].slice(0, MAX_CUSTOM_SCENARIOS);
+        const next =
+          editingId === null
+            ? [...customs, { id: createCustomId(), label: name, instruction }].slice(0, MAX_CUSTOM_SCENARIOS)
+            : customs.map((item) => (item.id === editingId ? { ...item, label: name, instruction } : item));
         setCustoms(next);
         writeCustomScenarios(next);
-        setOverride(item.id);
+        if (editingId === null) setOverride(next[next.length - 1].id);
         setCreating(false);
+        setEditingId(null);
         setDraftName('');
         setDraftInstruction('');
         setFormError('');
-      }, [customs, draftInstruction, draftName, t]);
+      }, [customs, draftInstruction, draftName, editingId, t]);
+
+      const editCustomScenario = React.useCallback((item) => {
+        setEditingId(item.id);
+        setDraftName(item.label);
+        setDraftInstruction(item.instruction);
+        setFormError('');
+        setCreating(true);
+      }, []);
+
+      const deleteCustomScenario = React.useCallback(
+        (id) => {
+          const next = customs.filter((item) => item.id !== id);
+          setCustoms(next);
+          writeCustomScenarios(next);
+          if (override === id) setOverride('auto');
+          if (editingId === id) {
+            setCreating(false);
+            setEditingId(null);
+            setDraftName('');
+            setDraftInstruction('');
+            setFormError('');
+          }
+        },
+        [customs, editingId, override],
+      );
 
       if (host === null) {
         // Marker only: it is the DOM anchor used to find the composer.
@@ -1005,19 +1082,54 @@ window.__ModuleLoader__.load({
         );
         const customChips = customs.map((item) =>
           h(
-            'button',
+            'span',
             {
-              type: 'button',
               key: item.id,
-              className: 'dsh-prompt-opt-chip dsh-prompt-opt-chip-custom',
-              title: item.instruction,
+              className: 'dsh-prompt-opt-chip dsh-prompt-opt-chip-group',
               'data-active': override === item.id ? 'true' : undefined,
-              onClick: (event) => {
-                event.preventDefault();
-                setOverride(item.id);
-              },
             },
-            item.label,
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-prompt-opt-chip-label',
+                title: item.instruction,
+                onClick: (event) => {
+                  event.preventDefault();
+                  setOverride(item.id);
+                },
+              },
+              item.label,
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-prompt-opt-chip-mini',
+                title: t('form.edit'),
+                'aria-label': t('form.edit'),
+                onClick: (event) => {
+                  event.preventDefault();
+                  editCustomScenario(item);
+                },
+              },
+              '✎',
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-prompt-opt-chip-mini',
+                title: t('form.delete'),
+                'aria-label': t('form.delete'),
+                'data-danger': 'true',
+                onClick: (event) => {
+                  event.preventDefault();
+                  deleteCustomScenario(item.id);
+                },
+              },
+              '×',
+            ),
           ),
         );
         const addChip = h(
@@ -1031,6 +1143,9 @@ window.__ModuleLoader__.load({
             onClick: (event) => {
               event.preventDefault();
               setCreating((value) => !value);
+              setEditingId(null);
+              setDraftName('');
+              setDraftInstruction('');
               setFormError('');
             },
           },
@@ -1042,7 +1157,7 @@ window.__ModuleLoader__.load({
           ? h(
               'div',
               { className: 'dsh-prompt-opt-form' },
-              h('div', { className: 'dsh-prompt-opt-form-title' }, t('panel.create')),
+              h('div', { className: 'dsh-prompt-opt-form-title' }, t(editingId === null ? 'panel.create' : 'panel.edit')),
               h('input', {
                 className: 'dsh-prompt-opt-input',
                 value: draftName,
@@ -1081,7 +1196,7 @@ window.__ModuleLoader__.load({
                       saveCustomScenario();
                     },
                   },
-                  t('form.save'),
+                  t(editingId === null ? 'form.save' : 'form.update'),
                 ),
                 h(
                   'button',
@@ -1091,6 +1206,7 @@ window.__ModuleLoader__.load({
                     onClick: (event) => {
                       event.preventDefault();
                       setCreating(false);
+                      setEditingId(null);
                       setFormError('');
                     },
                   },
