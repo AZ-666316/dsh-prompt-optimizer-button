@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-optimizer-button",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "description": "Prompt optimizer button between the model selector and send: rewrites the draft in place with one model call, with scenario detection and a compact diagnosis panel (POST /prompt-optimizer/rewrite).",
   "license": "MIT",
