@@ -35,6 +35,8 @@ window.__ModuleLoader__.load({
     const PANEL_WIDTH = 324;
     const PANEL_MARGIN = 12;
     const CUSTOM_SCENARIOS_KEY = 'dsh-prompt-optimizer-button:custom-scenarios';
+    const SCENARIO_CONFIG_KEY = 'dsh-prompt-optimizer-button:scenario-config';
+    const EDITABLE_PRESETS = ['paper', 'agent', 'daily', 'english'];
     const MAX_CUSTOM_SCENARIOS = 8;
     const MAX_CUSTOM_NAME = 24;
     const MAX_CUSTOM_INSTRUCTION = 600;
@@ -76,6 +78,10 @@ window.__ModuleLoader__.load({
       'form.edit': '编辑',
       'form.delete': '删除',
       'form.cancel': '取消',
+      'form.restore': '恢复默认',
+      'form.presetHint': '内置规则仍然生效，这里的说明会叠加在它们之后；名称可改。',
+      'placeholder.presetInstruction': '留空则只用内置规则；例如：额外要求给出英文期刊的表述习惯。',
+      'panel.restoreHidden': '恢复隐藏的预设场景',
       'form.error.name': '请填写场景名称',
       'form.error.instruction': '请填写说明或提示词',
       'form.error.duplicate': '已有同名场景',
@@ -118,6 +124,10 @@ window.__ModuleLoader__.load({
       'form.edit': 'Edit',
       'form.delete': 'Delete',
       'form.cancel': 'Cancel',
+      'form.restore': 'Reset to default',
+      'form.presetHint': 'The built-in rules still apply; this instruction is appended after them. The name can be renamed.',
+      'placeholder.presetInstruction': 'Leave empty to use only the built-in rules; e.g. also require journal-style English wording.',
+      'panel.restoreHidden': 'Restore hidden presets',
       'form.error.name': 'Enter a scenario name',
       'form.error.instruction': 'Enter the instruction for this scenario',
       'form.error.duplicate': 'A scenario with this name already exists',
@@ -369,6 +379,26 @@ window.__ModuleLoader__.load({
       .dsh-prompt-opt-chip-mini[data-danger="true"]:hover {
         background: rgba(229, 72, 77, 0.24);
         color: #ffb3b6;
+      }
+      .dsh-prompt-opt-chip-group[data-edited="true"] .dsh-prompt-opt-chip-label {
+        color: #c7b8ff;
+      }
+      .dsh-prompt-opt-link {
+        align-self: flex-start;
+        margin-top: 2px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: rgba(199, 184, 255, 0.72);
+        font: inherit;
+        font-size: 10.5px;
+        line-height: 15px;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
+      .dsh-prompt-opt-link:hover {
+        color: #d9cdff;
       }
       .dsh-prompt-opt-form {
         display: flex;
@@ -661,35 +691,78 @@ window.__ModuleLoader__.load({
         : { left: Math.round(left), top: Math.round(rect.bottom + 10), width };
     }
 
-    // ── custom scenarios (persisted in the browser) ────────────────────────
-    function readCustomScenarios() {
+    // ── scenario config (custom scenarios + preset overrides, persisted) ───
+    function normaliseCustomList(list) {
+      if (!Array.isArray(list)) return [];
+      return list
+        .filter((item) => item !== null && typeof item === 'object')
+        .map((item) => ({
+          id: typeof item.id === 'string' && item.id !== '' ? item.id : createCustomId(),
+          label: typeof item.label === 'string' ? item.label.trim().slice(0, MAX_CUSTOM_NAME) : '',
+          instruction:
+            typeof item.instruction === 'string' ? item.instruction.trim().slice(0, MAX_CUSTOM_INSTRUCTION) : '',
+        }))
+        .filter((item) => item.label !== '' && item.instruction !== '')
+        .slice(0, MAX_CUSTOM_SCENARIOS);
+    }
+
+    function normalisePresetOverrides(value) {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+      const out = {};
+      for (const id of EDITABLE_PRESETS) {
+        const item = value[id];
+        if (item === null || typeof item !== 'object') continue;
+        const label = typeof item.label === 'string' ? item.label.trim().slice(0, MAX_CUSTOM_NAME) : '';
+        const instruction =
+          typeof item.instruction === 'string' ? item.instruction.trim().slice(0, MAX_CUSTOM_INSTRUCTION) : '';
+        if (label !== '' || instruction !== '') out[id] = { label, instruction };
+      }
+      return out;
+    }
+
+    function normaliseHiddenPresets(value) {
+      if (!Array.isArray(value)) return [];
+      return EDITABLE_PRESETS.filter((id) => value.includes(id));
+    }
+
+    /**
+     * Read the whole scenario config:
+     * `{ custom: [...], presets: { paper: { label, instruction } }, hidden: [...] }`.
+     * Older versions stored only the custom list, so that shape is migrated.
+     */
+    function readScenarioConfig() {
+      const empty = { custom: [], presets: {}, hidden: [] };
       try {
         const storage = typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined;
-        if (storage === undefined || storage === null) return [];
-        const raw = storage.getItem(CUSTOM_SCENARIOS_KEY);
-        if (typeof raw !== 'string' || raw === '') return [];
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        return parsed
-          .filter((item) => item !== null && typeof item === 'object')
-          .map((item) => ({
-            id: typeof item.id === 'string' && item.id !== '' ? item.id : createCustomId(),
-            label: typeof item.label === 'string' ? item.label.trim().slice(0, MAX_CUSTOM_NAME) : '',
-            instruction: typeof item.instruction === 'string' ? item.instruction.trim().slice(0, MAX_CUSTOM_INSTRUCTION) : '',
-          }))
-          .filter((item) => item.label !== '' && item.instruction !== '')
-          .slice(0, MAX_CUSTOM_SCENARIOS);
+        if (storage === undefined || storage === null) return empty;
+        const raw = storage.getItem(SCENARIO_CONFIG_KEY);
+        if (typeof raw === 'string' && raw !== '') {
+          const parsed = JSON.parse(raw);
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return {
+              custom: normaliseCustomList(parsed.custom),
+              presets: normalisePresetOverrides(parsed.presets),
+              hidden: normaliseHiddenPresets(parsed.hidden),
+            };
+          }
+        }
+        const legacy = storage.getItem(CUSTOM_SCENARIOS_KEY);
+        if (typeof legacy === 'string' && legacy !== '') {
+          const parsed = JSON.parse(legacy);
+          return { ...empty, custom: normaliseCustomList(parsed) };
+        }
+        return empty;
       } catch {
-        return [];
+        return empty;
       }
     }
 
-    function writeCustomScenarios(list) {
+    function writeScenarioConfig(config) {
       try {
         const storage = typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined;
-        if (storage !== undefined && storage !== null) storage.setItem(CUSTOM_SCENARIOS_KEY, JSON.stringify(list));
+        if (storage !== undefined && storage !== null) storage.setItem(SCENARIO_CONFIG_KEY, JSON.stringify(config));
       } catch {
-        // Private mode / quota exceeded: optimization still works, the scenario is just not persisted.
+        // Private mode / quota exceeded: optimization still works, the config is just not persisted.
       }
     }
 
@@ -724,7 +797,8 @@ window.__ModuleLoader__.load({
       const [result, setResult] = React.useState(null);
       const [placement, setPlacement] = React.useState(null);
       const [tip, setTip] = React.useState(null);
-      const [customs, setCustoms] = React.useState(readCustomScenarios);
+      const [config, setConfig] = React.useState(readScenarioConfig);
+      const customs = config.custom;
       const [creating, setCreating] = React.useState(false);
       const [editingId, setEditingId] = React.useState(null);
       const [draftName, setDraftName] = React.useState('');
@@ -902,6 +976,11 @@ window.__ModuleLoader__.load({
               payload.scenarioInstruction = custom.instruction;
             } else {
               payload.scenario = override;
+              const preset = config.presets[override] ?? null;
+              if (preset !== null) {
+                if (preset.label !== '') payload.scenarioLabel = preset.label;
+                if (preset.instruction !== '') payload.scenarioInstruction = preset.instruction;
+              }
             }
           }
           const response = await fetch(REWRITE_ROUTE, {
@@ -932,16 +1011,26 @@ window.__ModuleLoader__.load({
           busyRef.current = false;
           setBusy(false);
         }
-      }, [canWrite, customs, empty, override, readRoute, text]);
+      }, [canWrite, config.presets, customs, empty, override, readRoute, text]);
 
-      const saveCustomScenario = React.useCallback(() => {
+      const editingPreset = editingId !== null && EDITABLE_PRESETS.includes(editingId) ? editingId : null;
+
+      const resetForm = React.useCallback(() => {
+        setCreating(false);
+        setEditingId(null);
+        setDraftName('');
+        setDraftInstruction('');
+        setFormError('');
+      }, []);
+
+      const saveScenario = React.useCallback(() => {
         const name = draftName.trim();
         const instruction = draftInstruction.trim();
         if (name === '') {
           setFormError(t('form.error.name'));
           return;
         }
-        if (instruction === '') {
+        if (editingPreset === null && instruction === '') {
           setFormError(t('form.error.instruction'));
           return;
         }
@@ -949,44 +1038,88 @@ window.__ModuleLoader__.load({
           setFormError(t('form.error.duplicate'));
           return;
         }
+        if (editingPreset !== null) {
+          const presets = { ...config.presets };
+          if (instruction === '' && name === t(`scenario.${editingPreset}`)) delete presets[editingPreset];
+          else presets[editingPreset] = { label: name, instruction };
+          const next = { ...config, presets };
+          setConfig(next);
+          writeScenarioConfig(next);
+          resetForm();
+          return;
+        }
         const next =
           editingId === null
             ? [...customs, { id: createCustomId(), label: name, instruction }].slice(0, MAX_CUSTOM_SCENARIOS)
             : customs.map((item) => (item.id === editingId ? { ...item, label: name, instruction } : item));
-        setCustoms(next);
-        writeCustomScenarios(next);
+        setConfig({ ...config, custom: next });
+        writeScenarioConfig({ ...config, custom: next });
         if (editingId === null) setOverride(next[next.length - 1].id);
-        setCreating(false);
-        setEditingId(null);
-        setDraftName('');
-        setDraftInstruction('');
-        setFormError('');
-      }, [customs, draftInstruction, draftName, editingId, t]);
+        resetForm();
+      }, [config, customs, draftInstruction, draftName, editingId, editingPreset, resetForm, t]);
 
-      const editCustomScenario = React.useCallback((item) => {
-        setEditingId(item.id);
-        setDraftName(item.label);
-        setDraftInstruction(item.instruction);
-        setFormError('');
-        setCreating(true);
-      }, []);
-
-      const deleteCustomScenario = React.useCallback(
-        (id) => {
-          const next = customs.filter((item) => item.id !== id);
-          setCustoms(next);
-          writeCustomScenarios(next);
-          if (override === id) setOverride('auto');
-          if (editingId === id) {
-            setCreating(false);
-            setEditingId(null);
-            setDraftName('');
-            setDraftInstruction('');
-            setFormError('');
-          }
+      const editScenario = React.useCallback(
+        (item) => {
+          setEditingId(item.id);
+          setDraftName(item.label);
+          setDraftInstruction(item.instruction);
+          setFormError('');
+          setCreating(true);
         },
-        [customs, editingId, override],
+        [],
       );
+
+      const editPresetScenario = React.useCallback(
+        (id) => {
+          const overrideItem = config.presets[id] ?? null;
+          const defaultLabel = t(`scenario.${id}`);
+          setEditingId(id);
+          setDraftName(overrideItem !== null && overrideItem.label !== '' ? overrideItem.label : defaultLabel);
+          setDraftInstruction(overrideItem !== null ? overrideItem.instruction : '');
+          setFormError('');
+          setCreating(true);
+        },
+        [config.presets, t],
+      );
+
+      const deleteScenario = React.useCallback(
+        (id) => {
+          if (EDITABLE_PRESETS.includes(id)) {
+            // Built-in presets cannot disappear from the host model; deleting hides the chip and
+            // forgets the local override (recoverable through "restore hidden presets").
+            const presets = { ...config.presets };
+            delete presets[id];
+            const hidden = config.hidden.includes(id) ? config.hidden : [...config.hidden, id];
+            const next = { ...config, presets, hidden };
+            setConfig(next);
+            writeScenarioConfig(next);
+          } else {
+            const custom = customs.filter((item) => item.id !== id);
+            const next = { ...config, custom };
+            setConfig(next);
+            writeScenarioConfig(next);
+          }
+          if (override === id) setOverride('auto');
+          if (editingId === id) resetForm();
+        },
+        [config, customs, editingId, override, resetForm],
+      );
+
+      const restoreHiddenPresets = React.useCallback(() => {
+        const next = { ...config, hidden: [] };
+        setConfig(next);
+        writeScenarioConfig(next);
+      }, [config]);
+
+      const restorePresetScenario = React.useCallback(() => {
+        if (editingPreset === null) return;
+        const presets = { ...config.presets };
+        delete presets[editingPreset];
+        const next = { ...config, presets };
+        setConfig(next);
+        writeScenarioConfig(next);
+        resetForm();
+      }, [config, editingPreset, resetForm]);
 
       if (host === null) {
         // Marker only: it is the DOM anchor used to find the composer.
@@ -996,7 +1129,13 @@ window.__ModuleLoader__.load({
       const detected = result !== null && typeof result.scenario === 'string' ? result.scenario : null;
       const activeCustom = customs.find((item) => item.id === override) ?? null;
       const activeScenario = override !== 'auto' ? override : detected;
-      const badgeLabel = activeCustom !== null ? activeCustom.label : t(`scenario.${activeScenario ?? 'auto'}`);
+      const activePreset = activeCustom === null && activeScenario !== null ? config.presets[activeScenario] ?? null : null;
+      const badgeLabel =
+        activeCustom !== null
+          ? activeCustom.label
+          : activePreset !== null && activePreset.label !== ''
+            ? activePreset.label
+            : t(`scenario.${activeScenario ?? 'auto'}`);
       const label = busy
         ? t('button.busy')
         : error !== ''
@@ -1064,21 +1203,78 @@ window.__ModuleLoader__.load({
           : null;
         const checks = diagnosis !== null && Array.isArray(diagnosis.checks) ? diagnosis.checks : [];
 
-        const presetChips = SCENARIOS.map((scenario) =>
-          h(
-            'button',
-            {
-              type: 'button',
-              key: scenario,
-              className: 'dsh-prompt-opt-chip',
-              'data-active': (scenario === 'auto' ? override === 'auto' : override === scenario) ? 'true' : undefined,
-              onClick: (event) => {
-                event.preventDefault();
-                setOverride(scenario);
+        const presetChips = SCENARIOS.filter((scenario) => scenario === 'auto' || !config.hidden.includes(scenario)).map(
+          (scenario) => {
+            if (scenario === 'auto') {
+              return h(
+                'button',
+                {
+                  type: 'button',
+                  key: scenario,
+                  className: 'dsh-prompt-opt-chip',
+                  'data-active': override === 'auto' ? 'true' : undefined,
+                  onClick: (event) => {
+                    event.preventDefault();
+                    setOverride('auto');
+                  },
+                },
+                t('scenario.auto'),
+              );
+            }
+            const preset = config.presets[scenario] ?? null;
+            const chipLabel = preset !== null && preset.label !== '' ? preset.label : t(`scenario.${scenario}`);
+            return h(
+              'span',
+              {
+                key: scenario,
+                className: 'dsh-prompt-opt-chip dsh-prompt-opt-chip-group',
+                'data-active': override === scenario ? 'true' : undefined,
+                'data-edited': preset !== null ? 'true' : undefined,
               },
-            },
-            t(`scenario.${scenario}`),
-          ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-prompt-opt-chip-label',
+                  title: preset !== null && preset.instruction !== '' ? preset.instruction : undefined,
+                  onClick: (event) => {
+                    event.preventDefault();
+                    setOverride(scenario);
+                  },
+                },
+                chipLabel,
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-prompt-opt-chip-mini',
+                  title: t('form.edit'),
+                  'aria-label': t('form.edit'),
+                  onClick: (event) => {
+                    event.preventDefault();
+                    editPresetScenario(scenario);
+                  },
+                },
+                '✎',
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-prompt-opt-chip-mini',
+                  title: t('form.delete'),
+                  'aria-label': t('form.delete'),
+                  'data-danger': 'true',
+                  onClick: (event) => {
+                    event.preventDefault();
+                    deleteScenario(scenario);
+                  },
+                },
+                '×',
+              ),
+            );
+          },
         );
         const customChips = customs.map((item) =>
           h(
@@ -1110,7 +1306,7 @@ window.__ModuleLoader__.load({
                 'aria-label': t('form.edit'),
                 onClick: (event) => {
                   event.preventDefault();
-                  editCustomScenario(item);
+                  editScenario(item);
                 },
               },
               '✎',
@@ -1125,7 +1321,7 @@ window.__ModuleLoader__.load({
                 'data-danger': 'true',
                 onClick: (event) => {
                   event.preventDefault();
-                  deleteCustomScenario(item.id);
+                  deleteScenario(item.id);
                 },
               },
               '×',
@@ -1152,12 +1348,34 @@ window.__ModuleLoader__.load({
           '＋',
         );
         const chips = presetChips.concat(customChips, [addChip]);
+        const restoreChip =
+          config.hidden.length > 0
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  key: 'restore-presets',
+                  className: 'dsh-prompt-opt-link',
+                  onClick: (event) => {
+                    event.preventDefault();
+                    restoreHiddenPresets();
+                  },
+                },
+                t('panel.restoreHidden'),
+              )
+            : null;
 
         const form = creating
           ? h(
               'div',
               { className: 'dsh-prompt-opt-form' },
-              h('div', { className: 'dsh-prompt-opt-form-title' }, t(editingId === null ? 'panel.create' : 'panel.edit')),
+              h(
+                'div',
+                { className: 'dsh-prompt-opt-form-title' },
+                editingPreset !== null
+                  ? `${t('panel.edit')} · ${t(`scenario.${editingPreset}`)}`
+                  : t(editingId === null ? 'panel.create' : 'panel.edit'),
+              ),
               h('input', {
                 className: 'dsh-prompt-opt-input',
                 value: draftName,
@@ -1174,14 +1392,18 @@ window.__ModuleLoader__.load({
                 value: draftInstruction,
                 maxLength: MAX_CUSTOM_INSTRUCTION,
                 rows: 3,
-                placeholder: t('placeholder.instruction'),
+                placeholder: editingPreset !== null ? t('placeholder.presetInstruction') : t('placeholder.instruction'),
                 'aria-label': t('field.instruction'),
                 onChange: (event) => {
                   setDraftInstruction(event.target.value);
                   if (formError !== '') setFormError('');
                 },
               }),
-              h('div', { className: 'dsh-prompt-opt-form-note' }, t('panel.customHint')),
+              h(
+                'div',
+                { className: 'dsh-prompt-opt-form-note' },
+                editingPreset !== null ? t('form.presetHint') : t('panel.customHint'),
+              ),
               formError !== '' ? h('div', { className: 'dsh-prompt-opt-form-error' }, formError) : null,
               h(
                 'div',
@@ -1193,11 +1415,25 @@ window.__ModuleLoader__.load({
                     className: 'dsh-prompt-opt-run',
                     onClick: (event) => {
                       event.preventDefault();
-                      saveCustomScenario();
+                      saveScenario();
                     },
                   },
                   t(editingId === null ? 'form.save' : 'form.update'),
                 ),
+                editingPreset !== null && config.presets[editingPreset] !== undefined
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsh-prompt-opt-ghost',
+                        onClick: (event) => {
+                          event.preventDefault();
+                          restorePresetScenario();
+                        },
+                      },
+                      t('form.restore'),
+                    )
+                  : null,
                 h(
                   'button',
                   {
@@ -1205,9 +1441,7 @@ window.__ModuleLoader__.load({
                     className: 'dsh-prompt-opt-ghost',
                     onClick: (event) => {
                       event.preventDefault();
-                      setCreating(false);
-                      setEditingId(null);
-                      setFormError('');
+                      resetForm();
                     },
                   },
                   t('form.cancel'),
@@ -1241,6 +1475,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'dsh-prompt-opt-hint' }, t('panel.hint')),
           h('div', { className: 'dsh-prompt-opt-section-label' }, t('panel.scenario')),
           h('div', { className: 'dsh-prompt-opt-chips' }, chips),
+          restoreChip,
           form,
           diagnosis !== null && checks.length > 0
             ? h(
@@ -1348,8 +1583,10 @@ window.__ModuleLoader__.load({
       __test: {
         computePanelPlacement,
         readModelRoute,
-        readCustomScenarios,
-        writeCustomScenarios,
+        readScenarioConfig,
+        writeScenarioConfig,
+        SCENARIO_CONFIG_KEY,
+        EDITABLE_PRESETS,
         createCustomId,
         CUSTOM_SCENARIOS_KEY,
         MAX_CUSTOM_SCENARIOS,

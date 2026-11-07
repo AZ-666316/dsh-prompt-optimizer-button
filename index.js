@@ -278,7 +278,7 @@ async function rewriteViaLlm({ llm, route, text, signal, scenario, customScenari
   const customHint =
     customScenario === undefined
       ? ''
-      : `用户在面板里自定义的场景「${customScenario.label}」，本场景的额外要求（与基础规则同时生效）：\n${customScenario.instruction}\n\n`;
+      : `面板场景「${customScenario.label}」的额外要求（与基础规则同时生效，不得删减用户明确要求）：\n${customScenario.instruction}\n\n`;
   const userText = `${customHint}${scenario === undefined ? text : `${SCENARIO_HINTS[scenario]}\n\n草稿：\n${text}`}`;
   const messages = [{ role: 'user', content: [{ type: 'text', text: userText }] }];
   let output = '';
@@ -408,7 +408,7 @@ export function apply(ctx) {
         },
         text,
         signal: controller.signal,
-        scenario: customScenario === undefined ? requestedScenario : undefined,
+        scenario: requestedScenario,
         customScenario,
       });
       sendJson(response, 200, {

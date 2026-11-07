@@ -118,6 +118,28 @@ assert.ok(userText.includes('驱动核查'), 'custom label should reach the mode
 assert.ok(userText.includes('官方与 GitHub 都要查'), 'custom instruction should reach the model');
 console.log('custom scenario:', JSON.stringify({ label: customData.requestedScenarioLabel }));
 
+// A preset with an extra instruction: the preset hint AND the override text must both reach the model.
+const presetExtra = fakeResponse();
+await handler(
+  fakeRequest('POST', {
+    text: 'SBRT 20Gy 组 NE 下降说明神经毁损',
+    provider: 'deepseek-account',
+    model: 'deepseek-flash',
+    scenario: 'paper',
+    scenarioLabel: '投稿论文',
+    scenarioInstruction: '额外要求：按英文期刊的表述习惯改写',
+  }),
+  presetExtra,
+);
+assert.equal(presetExtra.statusCode, 200);
+const presetExtraData = JSON.parse(presetExtra.body);
+assert.equal(presetExtraData.requestedScenario, 'paper');
+assert.equal(presetExtraData.requestedScenarioLabel, '投稿论文');
+const presetUserText = lastStreamOptions.messages[0].content[0].text;
+assert.ok(presetUserText.includes('额外要求：按英文期刊的表述习惯改写'), 'preset override must reach the model');
+assert.ok(presetUserText.includes('草稿：'), 'preset hint must still be applied');
+console.log('preset + extra instruction:', JSON.stringify({ scenario: presetExtraData.requestedScenario }));
+
 const emptyText = fakeResponse();
 await handler(fakeRequest('POST', { text: '   ', provider: 'p', model: 'm' }), emptyText);
 assert.equal(emptyText.statusCode, 400);

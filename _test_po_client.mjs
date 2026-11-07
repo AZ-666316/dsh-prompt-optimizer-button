@@ -89,7 +89,7 @@ assert.equal(slotted[0].options.order, 100);
 assert.equal(typeof slotted[0].component, 'function');
 console.log('slot options:', JSON.stringify(slotted[0].options));
 
-// Custom scenarios: created in the popover and persisted in localStorage.
+// Scenario config: custom scenarios + preset overrides + hidden presets, in localStorage.
 const store = new Map();
 globalThis.localStorage = {
   getItem: (key) => (store.has(key) ? store.get(key) : null),
@@ -97,15 +97,33 @@ globalThis.localStorage = {
   removeItem: (key) => store.delete(key),
   clear: () => store.clear(),
 };
-const { readCustomScenarios, writeCustomScenarios, CUSTOM_SCENARIOS_KEY } = plugin.__test;
-assert.deepEqual(readCustomScenarios(), [], 'empty storage reads as no scenarios');
-writeCustomScenarios([{ id: 'custom-1', label: '  代码审查  ', instruction: '  只补动作和验收  ' }]);
-assert.ok(store.get(CUSTOM_SCENARIOS_KEY), 'scenarios should be written to localStorage');
-const loaded = readCustomScenarios();
-assert.equal(loaded.length, 1);
-assert.equal(loaded[0].label, '代码审查');
-assert.equal(loaded[0].instruction, '只补动作和验收');
-writeCustomScenarios([{ id: 'x', label: '', instruction: 'y' }]);
-assert.deepEqual(readCustomScenarios(), [], 'entries without a label are dropped');
-console.log('custom scenario persistence: OK');
+const { readScenarioConfig, writeScenarioConfig, SCENARIO_CONFIG_KEY, CUSTOM_SCENARIOS_KEY, EDITABLE_PRESETS } = plugin.__test;
+assert.deepEqual(readScenarioConfig(), { custom: [], presets: {}, hidden: [] }, 'empty storage reads as defaults');
+assert.deepEqual(EDITABLE_PRESETS, ['paper', 'agent', 'daily', 'english']);
+
+// v1 (custom-only) storage is migrated.
+store.set(CUSTOM_SCENARIOS_KEY, JSON.stringify([{ id: 'custom-1', label: '  代码审查  ', instruction: '  只补动作和验收  ' }]));
+const migrated = readScenarioConfig();
+assert.equal(migrated.custom.length, 1);
+assert.equal(migrated.custom[0].label, '代码审查');
+assert.deepEqual(migrated.presets, {});
+
+// v2 round-trip: custom + preset override + hidden preset.
+writeScenarioConfig({
+  custom: [{ id: 'custom-1', label: '  代码审查  ', instruction: '  只补动作和验收  ' }],
+  presets: { paper: { label: ' 投稿论文 ', instruction: ' 额外按英文期刊习惯 ' }, daily: { label: 'x', instruction: '' } },
+  hidden: ['english', 'nope'],
+});
+const loaded = readScenarioConfig();
+assert.ok(store.get(SCENARIO_CONFIG_KEY), 'config should be written to localStorage');
+assert.equal(loaded.custom[0].label, '代码审查');
+assert.equal(loaded.custom[0].instruction, '只补动作和验收');
+assert.deepEqual(loaded.presets.paper, { label: '投稿论文', instruction: '额外按英文期刊习惯' });
+assert.equal(loaded.presets.daily.label, 'x', 'rename-only preset overrides are kept');
+assert.deepEqual(loaded.hidden, ['english'], 'unknown hidden ids are dropped');
+
+// Invalid entries are dropped on read.
+writeScenarioConfig({ custom: [{ id: 'x', label: '', instruction: 'y' }], presets: null, hidden: 'paper' });
+assert.deepEqual(readScenarioConfig(), { custom: [], presets: {}, hidden: [] });
+console.log('scenario config persistence: OK');
 console.log('CLIENT BUNDLE SMOKE PASS');
