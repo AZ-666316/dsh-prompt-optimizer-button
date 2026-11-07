@@ -13,6 +13,7 @@ const modelReply = [
 ].join('\n');
 
 const routes = [];
+let lastStreamOptions = null;
 const ctx = {
   get(name) {
     if (name !== 'llm') return undefined;
@@ -24,6 +25,7 @@ const ctx = {
           config: { ...config },
           async *stream(options) {
             if (!options.system || !Array.isArray(options.messages)) throw new Error('bad stream options');
+            lastStreamOptions = options;
             yield { type: 'block-start', index: 0 };
             const step = 24;
             for (let i = 0; i < modelReply.length; i += step) {
@@ -94,6 +96,27 @@ assert.equal(data.text, '优化后的提示词');
 assert.equal(data.diagnosis.checks.length, 3);
 assert.equal(data.diagnosis.checks[0].passed, false);
 console.log('200:', JSON.stringify({ ok: data.ok, scenario: data.scenario, text: data.text }));
+
+// A user-defined scenario carries its own instruction; the host must pass both on.
+const custom = fakeResponse();
+await handler(
+  fakeRequest('POST', {
+    text: '确认 AMD 驱动版本',
+    provider: 'deepseek-account',
+    model: 'deepseek-flash',
+    scenarioLabel: '驱动核查',
+    scenarioInstruction: '官方与 GitHub 都要查，两个都要看',
+  }),
+  custom,
+);
+assert.equal(custom.statusCode, 200);
+const customData = JSON.parse(custom.body);
+assert.equal(customData.requestedScenarioLabel, '驱动核查');
+assert.equal(customData.requestedScenario, null);
+const userText = lastStreamOptions.messages[0].content[0].text;
+assert.ok(userText.includes('驱动核查'), 'custom label should reach the model');
+assert.ok(userText.includes('官方与 GitHub 都要查'), 'custom instruction should reach the model');
+console.log('custom scenario:', JSON.stringify({ label: customData.requestedScenarioLabel }));
 
 const emptyText = fakeResponse();
 await handler(fakeRequest('POST', { text: '   ', provider: 'p', model: 'm' }), emptyText);

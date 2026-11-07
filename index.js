@@ -33,6 +33,8 @@ export const inject = [];
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_TEXT_CHARS = 20_000;
+const MAX_CUSTOM_LABEL = 24;
+const MAX_CUSTOM_INSTRUCTION = 600;
 const MAX_OUTPUT_TOKENS = 4_000;
 /** Rewrite is a editing task, not a reasoning puzzle: low effort is both faster and less likely to pad. */
 const DEFAULT_REASONING_EFFORT = 'low';
@@ -268,10 +270,16 @@ function parseModelAnswer(raw, requestedScenario) {
  * @param {string} options.text
  * @param {AbortSignal} options.signal
  * @param {string | undefined} options.scenario explicit scenario chosen in the UI
+ * @param {{ label: string, instruction: string } | undefined} options.customScenario
+ *   user-defined scenario created in the popover; its instruction is applied on top of the base rules
  * @returns {Promise<{ prompt: string, scenario: string | null, diagnosis: object | null }>}
  */
-async function rewriteViaLlm({ llm, route, text, signal, scenario }) {
-  const userText = scenario === undefined ? text : `${SCENARIO_HINTS[scenario]}\n\n草稿：\n${text}`;
+async function rewriteViaLlm({ llm, route, text, signal, scenario, customScenario }) {
+  const customHint =
+    customScenario === undefined
+      ? ''
+      : `用户在面板里自定义的场景「${customScenario.label}」，本场景的额外要求（与基础规则同时生效）：\n${customScenario.instruction}\n\n`;
+  const userText = `${customHint}${scenario === undefined ? text : `${SCENARIO_HINTS[scenario]}\n\n草稿：\n${text}`}`;
   const messages = [{ role: 'user', content: [{ type: 'text', text: userText }] }];
   let output = '';
   let finishKind = null;
@@ -380,6 +388,15 @@ export function apply(ctx) {
     // Optional explicit scenario from the client ("auto" or absent = let the model judge).
     const requestedScenario =
       typeof payload.scenario === 'string' && SCENARIOS.has(payload.scenario) ? payload.scenario : undefined;
+    // Optional user-defined scenario created in the popover. It is stored in the
+    // browser, so the host only ever sees it as a label + instruction.
+    const customLabel = typeof payload.scenarioLabel === 'string' ? payload.scenarioLabel.trim().slice(0, MAX_CUSTOM_LABEL) : '';
+    const customInstruction =
+      typeof payload.scenarioInstruction === 'string'
+        ? payload.scenarioInstruction.trim().slice(0, MAX_CUSTOM_INSTRUCTION)
+        : '';
+    const customScenario =
+      customLabel === '' || customInstruction === '' ? undefined : { label: customLabel, instruction: customInstruction };
 
     try {
       const result = await rewriteViaLlm({
@@ -391,7 +408,8 @@ export function apply(ctx) {
         },
         text,
         signal: controller.signal,
-        scenario: requestedScenario,
+        scenario: customScenario === undefined ? requestedScenario : undefined,
+        customScenario,
       });
       sendJson(response, 200, {
         ok: true,
@@ -399,6 +417,7 @@ export function apply(ctx) {
         scenario: result.scenario,
         diagnosis: result.diagnosis,
         requestedScenario: requestedScenario ?? null,
+        requestedScenarioLabel: customScenario === undefined ? null : customScenario.label,
       });
     } catch (error) {
       const message = String(error?.message ?? error);

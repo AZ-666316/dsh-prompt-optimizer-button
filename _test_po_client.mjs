@@ -88,4 +88,24 @@ assert.equal(slotted[0].options.id, 'prompt-optimizer-button');
 assert.equal(slotted[0].options.order, 100);
 assert.equal(typeof slotted[0].component, 'function');
 console.log('slot options:', JSON.stringify(slotted[0].options));
+
+// Custom scenarios: created in the popover and persisted in localStorage.
+const store = new Map();
+globalThis.localStorage = {
+  getItem: (key) => (store.has(key) ? store.get(key) : null),
+  setItem: (key, value) => store.set(key, String(value)),
+  removeItem: (key) => store.delete(key),
+  clear: () => store.clear(),
+};
+const { readCustomScenarios, writeCustomScenarios, CUSTOM_SCENARIOS_KEY } = plugin.__test;
+assert.deepEqual(readCustomScenarios(), [], 'empty storage reads as no scenarios');
+writeCustomScenarios([{ id: 'custom-1', label: '  代码审查  ', instruction: '  只补动作和验收  ' }]);
+assert.ok(store.get(CUSTOM_SCENARIOS_KEY), 'scenarios should be written to localStorage');
+const loaded = readCustomScenarios();
+assert.equal(loaded.length, 1);
+assert.equal(loaded[0].label, '代码审查');
+assert.equal(loaded[0].instruction, '只补动作和验收');
+writeCustomScenarios([{ id: 'x', label: '', instruction: 'y' }]);
+assert.deepEqual(readCustomScenarios(), [], 'entries without a label are dropped');
+console.log('custom scenario persistence: OK');
 console.log('CLIENT BUNDLE SMOKE PASS');

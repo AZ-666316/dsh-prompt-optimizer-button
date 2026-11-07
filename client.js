@@ -34,6 +34,10 @@ window.__ModuleLoader__.load({
     const SCENARIOS = ['auto', 'paper', 'agent', 'daily', 'english'];
     const PANEL_WIDTH = 324;
     const PANEL_MARGIN = 12;
+    const CUSTOM_SCENARIOS_KEY = 'dsh-prompt-optimizer-button:custom-scenarios';
+    const MAX_CUSTOM_SCENARIOS = 8;
+    const MAX_CUSTOM_NAME = 24;
+    const MAX_CUSTOM_INSTRUCTION = 600;
 
     // ── dictionaries ───────────────────────────────────────────────────────
     const zh = {
@@ -59,6 +63,18 @@ window.__ModuleLoader__.load({
       'scenario.agent': '派活',
       'scenario.daily': '日常',
       'scenario.english': '英文',
+      'scenario.add': '新增场景',
+      'panel.create': '新建场景',
+      'panel.customHint': '自定义场景保存在本机浏览器，只影响你自己的这一份界面。',
+      'field.name': '名称',
+      'field.instruction': '说明 / 提示词',
+      'placeholder.name': '例如：代码审查',
+      'placeholder.instruction': '这个场景要求怎样改写？例如：只补动作、输入、输出、禁止项与验收命令。',
+      'form.save': '保存并使用',
+      'form.cancel': '取消',
+      'form.error.name': '请填写场景名称',
+      'form.error.instruction': '请填写说明或提示词',
+      'form.error.duplicate': '已有同名场景',
       'tip.scenarioPrefix': '场景：',
       'tip.badgeHint': '点击查看诊断',
     };
@@ -85,6 +101,18 @@ window.__ModuleLoader__.load({
       'scenario.agent': 'Agent task',
       'scenario.daily': 'Daily',
       'scenario.english': 'English',
+      'scenario.add': 'Add scenario',
+      'panel.create': 'New scenario',
+      'panel.customHint': 'Custom scenarios are stored in this browser and only affect your own UI.',
+      'field.name': 'Name',
+      'field.instruction': 'Instruction',
+      'placeholder.name': 'e.g. Code review',
+      'placeholder.instruction': 'How should this scenario rewrite? e.g. Only add action, inputs, outputs, prohibitions and acceptance commands.',
+      'form.save': 'Save & use',
+      'form.cancel': 'Cancel',
+      'form.error.name': 'Enter a scenario name',
+      'form.error.instruction': 'Enter the instruction for this scenario',
+      'form.error.duplicate': 'A scenario with this name already exists',
       'tip.scenarioPrefix': 'Scenario: ',
       'tip.badgeHint': 'click for diagnosis',
     };
@@ -287,6 +315,82 @@ window.__ModuleLoader__.load({
         background: rgba(107, 124, 255, 0.26);
         border-color: rgba(124, 140, 255, 0.85);
         color: #e6e9ff;
+      }
+      .dsh-prompt-opt-chip-add {
+        padding: 3px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 15px;
+      }
+      .dsh-prompt-opt-form {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .dsh-prompt-opt-form-title {
+        color: rgba(244, 244, 245, 0.86);
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+      .dsh-prompt-opt-input,
+      .dsh-prompt-opt-textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 5px 7px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.22);
+        color: rgba(244, 244, 245, 0.92);
+        font: inherit;
+        font-size: 11.5px;
+        line-height: 1.45;
+      }
+      .dsh-prompt-opt-textarea {
+        min-height: 54px;
+        resize: vertical;
+      }
+      .dsh-prompt-opt-input::placeholder,
+      .dsh-prompt-opt-textarea::placeholder {
+        color: rgba(244, 244, 245, 0.34);
+      }
+      .dsh-prompt-opt-input:focus,
+      .dsh-prompt-opt-textarea:focus {
+        outline: none;
+        border-color: rgba(124, 140, 255, 0.8);
+      }
+      .dsh-prompt-opt-form-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dsh-prompt-opt-ghost {
+        padding: 5px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        background: transparent;
+        color: rgba(244, 244, 245, 0.82);
+        font: inherit;
+        font-size: 11.5px;
+        line-height: 17px;
+        cursor: pointer;
+      }
+      .dsh-prompt-opt-ghost:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .dsh-prompt-opt-form-error {
+        margin-top: 1px;
+        color: #ffb3b6;
+        font-size: 11px;
+      }
+      .dsh-prompt-opt-form-note {
+        color: rgba(244, 244, 245, 0.42);
+        font-size: 10.5px;
+        line-height: 1.5;
       }
       .dsh-prompt-opt-check {
         display: grid;
@@ -509,6 +613,42 @@ window.__ModuleLoader__.load({
         : { left: Math.round(left), top: Math.round(rect.bottom + 10), width };
     }
 
+    // ── custom scenarios (persisted in the browser) ────────────────────────
+    function readCustomScenarios() {
+      try {
+        const storage = typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined;
+        if (storage === undefined || storage === null) return [];
+        const raw = storage.getItem(CUSTOM_SCENARIOS_KEY);
+        if (typeof raw !== 'string' || raw === '') return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+          .filter((item) => item !== null && typeof item === 'object')
+          .map((item) => ({
+            id: typeof item.id === 'string' && item.id !== '' ? item.id : createCustomId(),
+            label: typeof item.label === 'string' ? item.label.trim().slice(0, MAX_CUSTOM_NAME) : '',
+            instruction: typeof item.instruction === 'string' ? item.instruction.trim().slice(0, MAX_CUSTOM_INSTRUCTION) : '',
+          }))
+          .filter((item) => item.label !== '' && item.instruction !== '')
+          .slice(0, MAX_CUSTOM_SCENARIOS);
+      } catch {
+        return [];
+      }
+    }
+
+    function writeCustomScenarios(list) {
+      try {
+        const storage = typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined;
+        if (storage !== undefined && storage !== null) storage.setItem(CUSTOM_SCENARIOS_KEY, JSON.stringify(list));
+      } catch {
+        // Private mode / quota exceeded: optimization still works, the scenario is just not persisted.
+      }
+    }
+
+    function createCustomId() {
+      return `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    }
+
     // ── component ──────────────────────────────────────────────────────────
     function OptimizeButton(props) {
       const t = typeof props.t === 'function' ? props.t : fallbackT;
@@ -536,6 +676,11 @@ window.__ModuleLoader__.load({
       const [result, setResult] = React.useState(null);
       const [placement, setPlacement] = React.useState(null);
       const [tip, setTip] = React.useState(null);
+      const [customs, setCustoms] = React.useState(readCustomScenarios);
+      const [creating, setCreating] = React.useState(false);
+      const [draftName, setDraftName] = React.useState('');
+      const [draftInstruction, setDraftInstruction] = React.useState('');
+      const [formError, setFormError] = React.useState('');
 
       // ── placement: keep the fixed popover glued to the button ────────────
       const updatePlacement = React.useCallback(() => {
@@ -701,7 +846,15 @@ window.__ModuleLoader__.load({
             model: route?.model,
             reasoningEffort: route?.reasoningEffort,
           };
-          if (override !== 'auto') payload.scenario = override;
+          if (override !== 'auto') {
+            const custom = customs.find((item) => item.id === override) ?? null;
+            if (custom !== null) {
+              payload.scenarioLabel = custom.label;
+              payload.scenarioInstruction = custom.instruction;
+            } else {
+              payload.scenario = override;
+            }
+          }
           const response = await fetch(REWRITE_ROUTE, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -730,7 +883,33 @@ window.__ModuleLoader__.load({
           busyRef.current = false;
           setBusy(false);
         }
-      }, [canWrite, empty, override, readRoute, text]);
+      }, [canWrite, customs, empty, override, readRoute, text]);
+
+      const saveCustomScenario = React.useCallback(() => {
+        const name = draftName.trim();
+        const instruction = draftInstruction.trim();
+        if (name === '') {
+          setFormError(t('form.error.name'));
+          return;
+        }
+        if (instruction === '') {
+          setFormError(t('form.error.instruction'));
+          return;
+        }
+        if (customs.some((item) => item.label === name)) {
+          setFormError(t('form.error.duplicate'));
+          return;
+        }
+        const item = { id: createCustomId(), label: name, instruction };
+        const next = [...customs, item].slice(0, MAX_CUSTOM_SCENARIOS);
+        setCustoms(next);
+        writeCustomScenarios(next);
+        setOverride(item.id);
+        setCreating(false);
+        setDraftName('');
+        setDraftInstruction('');
+        setFormError('');
+      }, [customs, draftInstruction, draftName, t]);
 
       if (host === null) {
         // Marker only: it is the DOM anchor used to find the composer.
@@ -738,8 +917,9 @@ window.__ModuleLoader__.load({
       }
 
       const detected = result !== null && typeof result.scenario === 'string' ? result.scenario : null;
+      const activeCustom = customs.find((item) => item.id === override) ?? null;
       const activeScenario = override !== 'auto' ? override : detected;
-      const badgeLabel = t(`scenario.${activeScenario ?? 'auto'}`);
+      const badgeLabel = activeCustom !== null ? activeCustom.label : t(`scenario.${activeScenario ?? 'auto'}`);
       const label = busy
         ? t('button.busy')
         : error !== ''
@@ -807,7 +987,7 @@ window.__ModuleLoader__.load({
           : null;
         const checks = diagnosis !== null && Array.isArray(diagnosis.checks) ? diagnosis.checks : [];
 
-        const chips = SCENARIOS.map((scenario) =>
+        const presetChips = SCENARIOS.map((scenario) =>
           h(
             'button',
             {
@@ -823,6 +1003,102 @@ window.__ModuleLoader__.load({
             t(`scenario.${scenario}`),
           ),
         );
+        const customChips = customs.map((item) =>
+          h(
+            'button',
+            {
+              type: 'button',
+              key: item.id,
+              className: 'dsh-prompt-opt-chip dsh-prompt-opt-chip-custom',
+              title: item.instruction,
+              'data-active': override === item.id ? 'true' : undefined,
+              onClick: (event) => {
+                event.preventDefault();
+                setOverride(item.id);
+              },
+            },
+            item.label,
+          ),
+        );
+        const addChip = h(
+          'button',
+          {
+            type: 'button',
+            key: 'add-scenario',
+            className: 'dsh-prompt-opt-chip dsh-prompt-opt-chip-add',
+            'aria-label': t('scenario.add'),
+            'aria-expanded': creating ? 'true' : 'false',
+            onClick: (event) => {
+              event.preventDefault();
+              setCreating((value) => !value);
+              setFormError('');
+            },
+          },
+          '＋',
+        );
+        const chips = presetChips.concat(customChips, [addChip]);
+
+        const form = creating
+          ? h(
+              'div',
+              { className: 'dsh-prompt-opt-form' },
+              h('div', { className: 'dsh-prompt-opt-form-title' }, t('panel.create')),
+              h('input', {
+                className: 'dsh-prompt-opt-input',
+                value: draftName,
+                maxLength: MAX_CUSTOM_NAME,
+                placeholder: t('placeholder.name'),
+                'aria-label': t('field.name'),
+                onChange: (event) => {
+                  setDraftName(event.target.value);
+                  if (formError !== '') setFormError('');
+                },
+              }),
+              h('textarea', {
+                className: 'dsh-prompt-opt-textarea',
+                value: draftInstruction,
+                maxLength: MAX_CUSTOM_INSTRUCTION,
+                rows: 3,
+                placeholder: t('placeholder.instruction'),
+                'aria-label': t('field.instruction'),
+                onChange: (event) => {
+                  setDraftInstruction(event.target.value);
+                  if (formError !== '') setFormError('');
+                },
+              }),
+              h('div', { className: 'dsh-prompt-opt-form-note' }, t('panel.customHint')),
+              formError !== '' ? h('div', { className: 'dsh-prompt-opt-form-error' }, formError) : null,
+              h(
+                'div',
+                { className: 'dsh-prompt-opt-form-actions' },
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-prompt-opt-run',
+                    onClick: (event) => {
+                      event.preventDefault();
+                      saveCustomScenario();
+                    },
+                  },
+                  t('form.save'),
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-prompt-opt-ghost',
+                    onClick: (event) => {
+                      event.preventDefault();
+                      setCreating(false);
+                      setFormError('');
+                    },
+                  },
+                  t('form.cancel'),
+                ),
+              ),
+            )
+          : null;
 
         const panelBody = h(
           'div',
@@ -849,6 +1125,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'dsh-prompt-opt-hint' }, t('panel.hint')),
           h('div', { className: 'dsh-prompt-opt-section-label' }, t('panel.scenario')),
           h('div', { className: 'dsh-prompt-opt-chips' }, chips),
+          form,
           diagnosis !== null && checks.length > 0
             ? h(
                 React.Fragment,
@@ -952,7 +1229,17 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      __test: { computePanelPlacement, readModelRoute, zh, en },
+      __test: {
+        computePanelPlacement,
+        readModelRoute,
+        readCustomScenarios,
+        writeCustomScenarios,
+        createCustomId,
+        CUSTOM_SCENARIOS_KEY,
+        MAX_CUSTOM_SCENARIOS,
+        zh,
+        en,
+      },
       inject: ['slots', 'locale', 'modelDirectories'],
       apply(ctx) {
         ensureStyles();
