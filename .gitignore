@@ -3,3 +3,7 @@
 .DS_Store
 Thumbs.db
 .npmrc
+.dsh/
+scripts/ops/
+_asar_x/
+_gif_work/
