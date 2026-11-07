@@ -4,34 +4,34 @@
   <img src="assets/icon-512.png" alt="prompt-optimizer-button icon" width="128" height="128">
 </p>
 
-## Codex / ?? agent ???skill?
+## Codex / 其他 agent 用法（skill）
 
-Codex ? agent ?? DSH ??? composer ???????????? **skill** ???`skills/prompt-optimizer/SKILL.md`?????????????????????????????????? + ???? + ?????????????????????
+Codex 的输入框没有插件接口，做不到在 composer 里加按钮；但可以用 **skill** 版：`skills/prompt-optimizer/SKILL.md`，规则与宿主侧一致（判场景 + 三自检 + 四问 + 长度红线 + 固定输出格式）。
 
-???? `skills/prompt-optimizer/` ??????????????
+安装 `skills/prompt-optimizer/` 到下面任一位置即可：
 
-- Codex?`~/.codex/skills/prompt-optimizer/`?? `~/.agents/skills/prompt-optimizer/`?DSH ? Codex ??????
-- DSH??????????`~/.dsh/skills/prompt-optimizer/` ??? `.dsh/skills/prompt-optimizer/`
+- Codex：`~/.codex/skills/prompt-optimizer/`，或 `~/.agents/skills/prompt-optimizer/`（DSH 与 Codex 共用）
+- DSH：用户级 `~/.dsh/skills/prompt-optimizer/`，或项目级 `.dsh/skills/prompt-optimizer/`
 
-???Codex ????????????????? `$prompt-optimizer`?DSH ?? `/prompt-optimizer`????? `$`/`/` ????
+调用方式：Codex 里说“优化这个提示词”，或显式 `$prompt-optimizer`；DSH 里可用 `/prompt-optimizer`。具体前缀取决于所用客户端的 skill 调用语法。
 
-Codex ????????????????? `UserPromptSubmit` hook ???????????? [Codex hooks](https://developers.openai.com/codex/hooks)???????????????????????????????????????????????
+Codex 里唯一“发送前”的钩子是 `UserPromptSubmit` hook，但它只能阻断或注入上下文、不能替换输入框内容，所以本插件不依赖它（详见 [Codex hooks](https://developers.openai.com/codex/hooks)）。
 
-## ??
+## 截图
 
 <p align="center">
   <img src="assets/screenshots/01-composer.png" alt="composer with scenario badge and optimize button" width="760"><br>
-  <sub>????????? + ?????????????????</sub>
+  <sub>输入框里：场景徽标 + 优化按钮，位于模型选择器与发送按钮之间</sub>
 </p>
 
 <p align="center">
   <img src="assets/screenshots/02-diagnosis-panel.png" alt="diagnosis panel" width="760"><br>
-  <sub>???????????? chips???????????????</sub>
+  <sub>诊断面板：场景 chips、任务类型与支撑决策、三条自检（✓ / !）</sub>
 </p>
 
 <p align="center">
   <img src="assets/screenshots/03-optimizing.png" alt="optimizing state" width="360"><br>
-  <sub>??????????????????</sub>
+  <sub>优化进行中：按钮呼吸闪烁，面板显示“正在优化…”</sub>
 </p>
 
 给 DSH 输入框加一个「优化提示词」小图标（sparkle）按钮，并在它旁边加一个场景徽标：位置在 **模型选择框与发送按钮之间**（麦克风/发送按钮左侧）。
@@ -58,8 +58,9 @@ dsh-prompt-optimizer-button/
 ├─ package.json        # dsh.bundle.patch + dsh.client
 ├─ cordis.patch.yml    # 往 profile 组合里插入 host 行
 ├─ index.js            # 宿主侧：POST /prompt-optimizer/rewrite（ctx.llm 一次调用）
-├─ client.js           # 浏览器侧：▸__ModuleLoader__ bundle，按钮 + portal 定位 + fetch
-├─ assets/icon-*.png   # 商店/README 图标（512/256/180）
+├─ client.js           # 浏览器侧：__ModuleLoader__ bundle，按钮 + portal 定位 + fetch
+├─ assets/             # 图标与截图
+├─ skills/prompt-optimizer/SKILL.md  # Codex / 其他 agent 的 skill 版
 ├─ publish/            # 商店上架草稿：awesome-entry.yml、CHECKLIST.md、PR_BODY.md
 └─ README.md
 ```
@@ -97,5 +98,5 @@ dsh-prompt-optimizer-button/
 - DSH 0.2.2 的 composer 内部 DOM 不是公开 API；升级后若 `[data-composer-card]` / `standardControls` 结构变化，按钮定位会失效（有「发送按钮前」的兜底定位）。
 - 按钮只在会话输入框出现（欢迎 hero 态没有该单元格）。
 - 宿主路由不做额外鉴权，依赖 Web 服务器本身只在 loopback 暴露；若要对外暴露需自行加策略。
-- 单次请求上限：输入 20k 字符、输出 4000 tokens、超时 90 秒；输出被 max tokens 截断时直接报错（提示缩短草稿），不会把半截提示词写回草稿。
+- 单次请求上限：输入 20k 字符、输出 4000 tokens、超时 90 秒；输出被 max tokens 截断时，若已解析出完整提示词则保留并标记，否则提示缩短草稿重试。
 - 目前不自动发送；要「点完直接发送」改 `client.js` 的 `onClick`，在 `setDraft` 后调用 `inputActions.submit()`。
