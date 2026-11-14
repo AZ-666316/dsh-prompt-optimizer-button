@@ -145,4 +145,34 @@ for (let i = 0; i < UNDO_LIMIT + 5; i += 1) many = pushUndoStack(many, { before:
 assert.equal(many.length, UNDO_LIMIT, 'undo stack is capped');
 assert.equal(many[many.length - 1].after, `a${UNDO_LIMIT + 4}`, 'newest entry survives trimming');
 console.log('undo history: OK');
+
+// v0.5.2: undo history is persisted per session, so refresh / session switch keeps it.
+const { readUndoStack, writeUndoStack, undoStorageKey, UNDO_STORAGE_PREFIX } = plugin.__test;
+assert.equal(undoStorageKey(''), null);
+assert.equal(undoStorageKey(undefined), null);
+assert.equal(undoStorageKey('session-a'), `${UNDO_STORAGE_PREFIX}session-a`);
+assert.deepEqual(readUndoStack('session-a'), [], 'empty storage reads as no history');
+writeUndoStack('session-a', [
+  { before: 'b1', after: 'a1' },
+  { before: 'b2', after: 'a2' },
+]);
+assert.deepEqual(readUndoStack('session-a').length, 2);
+assert.deepEqual(readUndoStack('session-a')[1], { before: 'b2', after: 'a2' });
+assert.deepEqual(readUndoStack('session-b'), [], 'histories are per session');
+for (let i = 0; i < UNDO_LIMIT + 4; i += 1) {
+  writeUndoStack('session-a', pushUndoStack(readUndoStack('session-a'), { before: `bb${i}`, after: `aa${i}` }));
+}
+assert.equal(readUndoStack('session-a').length, UNDO_LIMIT, 'persisted stack is capped');
+store.set(undoStorageKey('session-broken'), '{not json');
+assert.deepEqual(readUndoStack('session-broken'), [], 'broken json reads as empty');
+writeUndoStack('session-a', []);
+assert.equal(store.has('dsh-prompt-optimizer-button:undo:session-a'), false, 'empty stack removes the key');
+
+// v0.5.2: a highlighted range is located inside the draft (nearest occurrence wins).
+const { locateSelection } = plugin.__test;
+assert.deepEqual(locateSelection('hello world', 'world', 6), { start: 6, end: 11 });
+assert.deepEqual(locateSelection('a x a y a', 'a', 4), { start: 4, end: 5 }, 'nearest occurrence wins');
+assert.equal(locateSelection('abc', 'zzz', 0), null);
+assert.equal(locateSelection('abc', '   ', 0), null);
+console.log('undo persistence + selection: OK');
 console.log('CLIENT BUNDLE SMOKE PASS');

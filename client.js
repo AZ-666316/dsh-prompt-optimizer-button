@@ -36,6 +36,7 @@ window.__ModuleLoader__.load({
     const PANEL_MARGIN = 12;
     const CUSTOM_SCENARIOS_KEY = 'dsh-prompt-optimizer-button:custom-scenarios';
     const SCENARIO_CONFIG_KEY = 'dsh-prompt-optimizer-button:scenario-config';
+    const UNDO_STORAGE_PREFIX = 'dsh-prompt-optimizer-button:undo:';
     const EDITABLE_PRESETS = ['repo', 'paper', 'agent', 'daily', 'english'];
     const MAX_CUSTOM_SCENARIOS = 8;
     const MAX_CUSTOM_NAME = 24;
@@ -46,6 +47,7 @@ window.__ModuleLoader__.load({
       'button.label': '优化提示词',
       'button.empty': '先写点内容，再点这里优化',
       'button.busy': '正在优化…',
+      'button.stop': '停止润色',
       'button.failed': '优化失败，点这里重试',
       'badge.auto': '自动',
       'panel.title': '提示词优化',
@@ -60,6 +62,7 @@ window.__ModuleLoader__.load({
       'panel.error': '失败原因',
       'panel.retry': '重新润色',
       'panel.empty': '输入框是空的，先写一句需求。',
+      'panel.partial': '只替换了选中的片段',
       'scenario.auto': '自动',
       'scenario.repo': '评估',
       'scenario.paper': '论文',
@@ -95,6 +98,7 @@ window.__ModuleLoader__.load({
       'button.label': 'Optimize prompt',
       'button.empty': 'Write something first, then optimize',
       'button.busy': 'Optimizing…',
+      'button.stop': 'Stop rewriting',
       'button.failed': 'Optimization failed — click to retry',
       'badge.auto': 'Auto',
       'panel.title': 'Prompt optimizer',
@@ -109,6 +113,7 @@ window.__ModuleLoader__.load({
       'panel.error': 'Reason',
       'panel.retry': 'Rewrite again',
       'panel.empty': 'The composer is empty — write a requirement first.',
+      'panel.partial': 'Only the selected text was replaced.',
       'scenario.auto': 'Auto',
       'scenario.repo': 'Evaluate',
       'scenario.paper': 'Paper',
@@ -188,7 +193,7 @@ window.__ModuleLoader__.load({
         opacity: 1;
         cursor: progress;
       }
-      .dsh-prompt-opt-btn[data-busy="true"] svg {
+      .dsh-prompt-opt-btn[data-busy="true"] .dsh-prompt-opt-sparkle {
         animation: dsh-prompt-opt-pulse 1s ease-in-out infinite;
       }
       .dsh-prompt-opt-btn[data-failed="true"] {
@@ -643,7 +648,7 @@ window.__ModuleLoader__.load({
         to { opacity: 1; transform: none; }
       }
       @media (prefers-reduced-motion: reduce) {
-        .dsh-prompt-opt-btn[data-busy="true"] svg { animation: none; }
+        .dsh-prompt-opt-btn[data-busy="true"] .dsh-prompt-opt-sparkle { animation: none; }
         .dsh-prompt-opt-panel { animation: none; }
       }
     `;
@@ -661,7 +666,15 @@ window.__ModuleLoader__.load({
     function SparkleIcon() {
       return h(
         'svg',
-        { viewBox: '0 0 16 16', width: 16, height: 16, fill: 'none', 'aria-hidden': 'true', focusable: 'false' },
+        {
+          className: 'dsh-prompt-opt-sparkle',
+          viewBox: '0 0 16 16',
+          width: 16,
+          height: 16,
+          fill: 'none',
+          'aria-hidden': 'true',
+          focusable: 'false',
+        },
         h('path', {
           d: 'M8 1.5l1.32 3.68L13 6.5 9.32 7.82 8 11.5 6.68 7.82 3 6.5l3.68-1.32L8 1.5Z',
           fill: 'currentColor',
@@ -671,6 +684,14 @@ window.__ModuleLoader__.load({
           fill: 'currentColor',
           opacity: 0.65,
         }),
+      );
+    }
+
+    function StopIcon() {
+      return h(
+        'svg',
+        { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', 'aria-hidden': 'true', focusable: 'false' },
+        h('rect', { x: 4.5, y: 4.5, width: 7, height: 7, rx: 1.6, fill: 'currentColor' }),
       );
     }
 
@@ -780,6 +801,108 @@ window.__ModuleLoader__.load({
       return current !== '' && current === top.after.trim() ? top : null;
     }
 
+    // ── undo history persistence (per session) ─────────────────────────────
+    /**
+     * The stack is written to localStorage under a per-session key, so a page
+     * refresh or a session switch keeps the "restore the previous draft" offer
+     * (v0.5.2). Entries hold draft text; they never leave this machine.
+     */
+    function undoStorageKey(sessionId) {
+      if (typeof sessionId !== 'string' || sessionId === '') return null;
+      return `${UNDO_STORAGE_PREFIX}${sessionId}`;
+    }
+
+    function readUndoStack(sessionId) {
+      const key = undoStorageKey(sessionId);
+      if (key === null) return [];
+      try {
+        const storage = typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined;
+        if (storage === undefined || storage === null) return [];
+        const raw = storage.getItem(key);
+        if (typeof raw !== 'string' || raw === '') return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        const stack = [];
+        for (const entry of parsed) {
+          if (entry === null || typeof entry !== 'object') continue;
+          const before = typeof entry.before === 'string' ? entry.before : '';
+          const after = typeof entry.after === 'string' ? entry.after : '';
+          if (after === '') continue;
+          stack.push({ before, after });
+        }
+        return stack.slice(-UNDO_LIMIT);
+      } catch {
+        return [];
+      }
+    }
+
+    function writeUndoStack(sessionId, stack) {
+      const key = undoStorageKey(sessionId);
+      if (key === null) return;
+      try {
+        const storage = typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined;
+        if (storage === undefined || storage === null) return;
+        const list = Array.isArray(stack) ? stack.slice(-UNDO_LIMIT) : [];
+        if (list.length === 0) storage.removeItem(key);
+        else storage.setItem(key, JSON.stringify(list));
+      } catch {
+        // Private mode / quota exceeded: undo still works in memory.
+      }
+    }
+
+    // ── selection: rewrite only the highlighted text (v0.5.2) ──────────────
+    function getComposerInput(card) {
+      if (card !== null && typeof card.querySelector === 'function') {
+        const own = card.querySelector('[data-composer-input]');
+        if (own !== null) return own;
+      }
+      return typeof document !== 'undefined' ? document.querySelector('[data-composer-input]') : null;
+    }
+
+    /**
+     * Find where the highlighted text sits inside the draft string. The composer
+     * is contenteditable, so its DOM text can differ from the draft by newlines;
+     * the approximate offset (text length before the selection) disambiguates
+     * repeated phrases.
+     */
+    function locateSelection(draft, selected, approximateStart) {
+      if (typeof draft !== 'string' || typeof selected !== 'string' || selected.trim() === '') return null;
+      const candidates = [];
+      let index = draft.indexOf(selected);
+      while (index !== -1 && candidates.length < 40) {
+        candidates.push(index);
+        index = draft.indexOf(selected, index + 1);
+      }
+      if (candidates.length === 0) return null;
+      const target = typeof approximateStart === 'number' && Number.isFinite(approximateStart) ? approximateStart : 0;
+      candidates.sort((a, b) => Math.abs(a - target) - Math.abs(b - target));
+      return { start: candidates[0], end: candidates[0] + selected.length };
+    }
+
+    function readSelection(card, draft) {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+      const input = getComposerInput(card);
+      const selection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+      if (input === null || selection === null || selection.isCollapsed === true || selection.rangeCount === 0) return null;
+      if (typeof input.contains !== 'function') return null;
+      const range = selection.getRangeAt(0);
+      if (input.contains(range.startContainer) === false || input.contains(range.endContainer) === false) return null;
+      const selected = range.toString();
+      if (selected.trim() === '' || selected === draft) return null;
+      let approximateStart = 0;
+      try {
+        const before = range.cloneRange();
+        before.selectNodeContents(input);
+        before.setEnd(range.startContainer, range.startOffset);
+        approximateStart = before.toString().length;
+      } catch {
+        approximateStart = 0;
+      }
+      const located = locateSelection(draft, selected, approximateStart);
+      if (located === null) return null;
+      return { text: selected, start: located.start, end: located.end };
+    }
+
     // ── scenario config (custom scenarios + preset overrides, persisted) ───
     function normaliseCustomList(list) {
       if (!Array.isArray(list)) return [];
@@ -865,6 +988,7 @@ window.__ModuleLoader__.load({
       const useInput = props.useInput;
       const inputActions = props.inputActions;
       const readRoute = props.readRoute;
+      const sessionId = typeof props.sessionId === 'string' ? props.sessionId : '';
 
       const draft =
         typeof useInput === 'function'
@@ -876,6 +1000,7 @@ window.__ModuleLoader__.load({
       const badgeRef = React.useRef(null);
       const panelRef = React.useRef(null);
       const busyRef = React.useRef(false);
+      const abortRef = React.useRef(null);
       const tipTimerRef = React.useRef(null);
 
       const [host, setHost] = React.useState(null);
@@ -886,7 +1011,7 @@ window.__ModuleLoader__.load({
       const [result, setResult] = React.useState(null);
       const [placement, setPlacement] = React.useState(null);
       const [tip, setTip] = React.useState(null);
-      const [undoStack, setUndoStack] = React.useState([]);
+      const [undoStack, setUndoStack] = React.useState(() => readUndoStack(sessionId));
       const [config, setConfig] = React.useState(readScenarioConfig);
       const customs = config.custom;
       const [creating, setCreating] = React.useState(false);
@@ -896,6 +1021,11 @@ window.__ModuleLoader__.load({
       const [formError, setFormError] = React.useState('');
 
       // ── placement: keep the fixed popover glued to the button ────────────
+      React.useEffect(() => {
+        // A different session gets its own undo history.
+        setUndoStack(readUndoStack(sessionId));
+      }, [sessionId]);
+
       const updatePlacement = React.useCallback(() => {
         const button = buttonRef.current;
         if (button === null || typeof window === 'undefined') return;
@@ -1046,15 +1176,30 @@ window.__ModuleLoader__.load({
         if (open) hideTip();
       }, [open, hideTip]);
 
+      const cancel = React.useCallback(() => {
+        const controller = abortRef.current;
+        abortRef.current = null;
+        busyRef.current = false;
+        if (controller !== null) controller.abort();
+        setBusy(false);
+      }, []);
+
       const run = React.useCallback(async () => {
         if (busyRef.current || empty || !canWrite) return;
+        const card = findComposerCard(markerRef.current);
+        // A highlighted range is rewritten on its own; everything else means the
+        // whole draft (same behaviour as before v0.5.2).
+        const selection = readSelection(card, text);
+        const requestText = selection !== null ? selection.text : text;
+        const controller = new AbortController();
+        abortRef.current = controller;
         busyRef.current = true;
         setBusy(true);
         setError('');
         try {
           const route = typeof readRoute === 'function' ? readRoute() : undefined;
           const payload = {
-            text,
+            text: requestText,
             provider: route?.provider,
             model: route?.model,
             reasoningEffort: route?.reasoningEffort,
@@ -1077,6 +1222,7 @@ window.__ModuleLoader__.load({
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload),
+            signal: controller.signal,
           });
           let data = null;
           try {
@@ -1090,23 +1236,33 @@ window.__ModuleLoader__.load({
           }
           const beforeDraft = text;
           const afterDraft = data.text.trim();
-          inputActions.setDraft(afterDraft);
-          if (afterDraft !== beforeDraft.trim()) {
-            setUndoStack((stack) => pushUndoStack(stack, { before: beforeDraft, after: afterDraft }));
+          let nextDraft = afterDraft;
+          let appliedPartial = false;
+          if (selection !== null && beforeDraft.slice(selection.start, selection.end) === selection.text) {
+            nextDraft = beforeDraft.slice(0, selection.start) + afterDraft + beforeDraft.slice(selection.end);
+            appliedPartial = true;
           }
-          setResult(data);
+          inputActions.setDraft(nextDraft);
+          if (nextDraft.trim() !== beforeDraft.trim()) {
+            const nextStack = pushUndoStack(undoStack, { before: beforeDraft, after: nextDraft });
+            setUndoStack(nextStack);
+            writeUndoStack(sessionId, nextStack);
+          }
+          setResult({ ...data, partial: appliedPartial });
           setOpen(true);
         } catch (failure) {
+          if (controller.signal.aborted === true) return; // cancelled by the user
           const message = String(failure?.message ?? failure);
           setError(message);
           setOpen(true);
           // eslint-disable-next-line no-console
           console.warn('[prompt-optimizer-button]', message);
         } finally {
+          if (abortRef.current === controller) abortRef.current = null;
           busyRef.current = false;
           setBusy(false);
         }
-      }, [canWrite, config.presets, customs, empty, override, readRoute, text]);
+      }, [canWrite, config.presets, customs, empty, override, readRoute, sessionId, text, undoStack]);
 
       // Undo is offered only while the draft is untouched since the rewrite, so a
       // click never discards edits the user made afterwards.
@@ -1115,10 +1271,12 @@ window.__ModuleLoader__.load({
         const entry = topUndoEntry(undoStack, text);
         if (entry === null || !canWrite) return;
         inputActions.setDraft(entry.before);
-        setUndoStack((stack) => stack.slice(0, -1));
+        const nextStack = undoStack.slice(0, -1);
+        setUndoStack(nextStack);
+        writeUndoStack(sessionId, nextStack);
         setResult(null);
         setError('');
-      }, [canWrite, text, undoStack]);
+      }, [canWrite, sessionId, text, undoStack]);
 
       const editingPreset = editingId !== null && EDITABLE_PRESETS.includes(editingId) ? editingId : null;
 
@@ -1244,7 +1402,7 @@ window.__ModuleLoader__.load({
             ? activePreset.label
             : t(`scenario.${activeScenario ?? 'auto'}`);
       const label = busy
-        ? t('button.busy')
+        ? t('button.stop')
         : error !== ''
           ? t('button.failed')
           : empty
@@ -1259,7 +1417,7 @@ window.__ModuleLoader__.load({
           ref: buttonRef,
           'aria-label': label,
           'aria-busy': busy || undefined,
-          'aria-disabled': empty || !canWrite || busy ? 'true' : undefined,
+          'aria-disabled': empty || !canWrite ? 'true' : undefined,
           'data-disabled': empty || !canWrite ? 'true' : undefined,
           'data-busy': busy ? 'true' : undefined,
           'data-failed': error !== '' ? 'true' : undefined,
@@ -1271,10 +1429,11 @@ window.__ModuleLoader__.load({
           onClick: (event) => {
             event.preventDefault();
             event.stopPropagation();
-            void run();
+            if (busy) cancel();
+            else void run();
           },
         },
-        h(SparkleIcon),
+        busy ? h(StopIcon) : h(SparkleIcon),
       );
 
       const badge = h(
@@ -1605,6 +1764,9 @@ window.__ModuleLoader__.load({
             ),
           ),
           h('div', { className: 'dsh-prompt-opt-hint' }, t('panel.hint')),
+          result !== null && result.partial === true
+            ? h('div', { className: 'dsh-prompt-opt-empty-note' }, t('panel.partial'))
+            : null,
           h('div', { className: 'dsh-prompt-opt-section-label' }, t('panel.scenario')),
           h('div', { className: 'dsh-prompt-opt-chips' }, chips),
           restoreChip,
@@ -1668,13 +1830,14 @@ window.__ModuleLoader__.load({
               {
                 type: 'button',
                 className: 'dsh-prompt-opt-run',
-                'aria-disabled': empty || busy || !canWrite ? 'true' : undefined,
+                'aria-disabled': empty || !canWrite ? 'true' : undefined,
                 onClick: (event) => {
                   event.preventDefault();
-                  void run();
+                  if (busy) cancel();
+                  else void run();
                 },
               },
-              busy ? t('button.busy') : t('panel.retry'),
+              busy ? t('button.stop') : t('panel.retry'),
             ),
             empty ? h('span', { className: 'dsh-prompt-opt-empty-note' }, t('panel.empty')) : null,
           ),
@@ -1730,6 +1893,11 @@ window.__ModuleLoader__.load({
         pushUndoStack,
         topUndoEntry,
         UNDO_LIMIT,
+        readUndoStack,
+        writeUndoStack,
+        undoStorageKey,
+        UNDO_STORAGE_PREFIX,
+        locateSelection,
         zh,
         en,
       },
