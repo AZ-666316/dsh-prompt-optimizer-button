@@ -8,13 +8,13 @@
  * and answers `{ ok, text, scenario, diagnosis }`:
  *
  * - `text`       → written back into the draft (the rewritten prompt);
- * - `scenario`   → which rule set the model judged (paper / agent / daily / english);
+ * - `scenario`   → which rule set the model judged (paper / repo / agent / daily / english);
  * - `diagnosis`  → task type, the decision the prompt supports, and the three
  *                  self-checks, shown in a small popover instead of the draft.
  *
  * The badge next to the icon shows the detected scenario and opens the popover;
- * inside it the scenario can be pinned manually (auto / paper / agent / daily /
- * english) before the next rewrite.
+ * inside it the scenario can be pinned manually (auto / paper / repo / agent /
+ * daily / english) before the next rewrite.
  *
  * Why a portal: the composer exposes `conversation.input.right` (before the model
  * selector) and `conversation.input.activity` (single-occupant microphone).
@@ -31,12 +31,12 @@ window.__ModuleLoader__.load({
 
     const NS = 'dsh-prompt-optimizer-button';
     const REWRITE_ROUTE = 'prompt-optimizer/rewrite';
-    const SCENARIOS = ['auto', 'paper', 'agent', 'daily', 'english'];
+    const SCENARIOS = ['auto', 'repo', 'paper', 'agent', 'daily', 'english'];
     const PANEL_WIDTH = 324;
     const PANEL_MARGIN = 12;
     const CUSTOM_SCENARIOS_KEY = 'dsh-prompt-optimizer-button:custom-scenarios';
     const SCENARIO_CONFIG_KEY = 'dsh-prompt-optimizer-button:scenario-config';
-    const EDITABLE_PRESETS = ['paper', 'agent', 'daily', 'english'];
+    const EDITABLE_PRESETS = ['repo', 'paper', 'agent', 'daily', 'english'];
     const MAX_CUSTOM_SCENARIOS = 8;
     const MAX_CUSTOM_NAME = 24;
     const MAX_CUSTOM_INSTRUCTION = 600;
@@ -61,6 +61,7 @@ window.__ModuleLoader__.load({
       'panel.retry': '重新润色',
       'panel.empty': '输入框是空的，先写一句需求。',
       'scenario.auto': '自动',
+      'scenario.repo': '评估',
       'scenario.paper': '论文',
       'scenario.agent': '派活',
       'scenario.daily': '日常',
@@ -107,6 +108,7 @@ window.__ModuleLoader__.load({
       'panel.retry': 'Rewrite again',
       'panel.empty': 'The composer is empty — write a requirement first.',
       'scenario.auto': 'Auto',
+      'scenario.repo': 'Evaluate',
       'scenario.paper': 'Paper',
       'scenario.agent': 'Agent task',
       'scenario.daily': 'Daily',

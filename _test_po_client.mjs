@@ -99,7 +99,9 @@ globalThis.localStorage = {
 };
 const { readScenarioConfig, writeScenarioConfig, SCENARIO_CONFIG_KEY, CUSTOM_SCENARIOS_KEY, EDITABLE_PRESETS } = plugin.__test;
 assert.deepEqual(readScenarioConfig(), { custom: [], presets: {}, hidden: [] }, 'empty storage reads as defaults');
-assert.deepEqual(EDITABLE_PRESETS, ['paper', 'agent', 'daily', 'english']);
+assert.deepEqual(EDITABLE_PRESETS, ['repo', 'paper', 'agent', 'daily', 'english']);
+assert.equal(plugin.__test.zh['scenario.repo'], '评估');
+assert.equal(plugin.__test.en['scenario.repo'], 'Evaluate');
 
 // v1 (custom-only) storage is migrated.
 store.set(CUSTOM_SCENARIOS_KEY, JSON.stringify([{ id: 'custom-1', label: '  代码审查  ', instruction: '  只补动作和验收  ' }]));
