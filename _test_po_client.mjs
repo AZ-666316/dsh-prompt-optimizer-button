@@ -128,4 +128,21 @@ assert.deepEqual(loaded.hidden, ['english'], 'unknown hidden ids are dropped');
 writeScenarioConfig({ custom: [{ id: 'x', label: '', instruction: 'y' }], presets: null, hidden: 'paper' });
 assert.deepEqual(readScenarioConfig(), { custom: [], presets: {}, hidden: [] });
 console.log('scenario config persistence: OK');
+
+// Undo history: the top entry is only restorable while the draft is still the
+// rewritten text, and the stack is capped.
+const { pushUndoStack, topUndoEntry, UNDO_LIMIT } = plugin.__test;
+assert.equal(topUndoEntry([], 'x'), null);
+assert.equal(topUndoEntry(null, 'x'), null);
+const one = pushUndoStack([], { before: '原稿', after: '润色稿' });
+assert.equal(one.length, 1);
+assert.equal(topUndoEntry(one, '润色稿').before, '原稿');
+assert.equal(topUndoEntry(one, '润色稿\n'), topUndoEntry(one, '润色稿'), 'whitespace around the draft is ignored');
+assert.equal(topUndoEntry(one, '润色稿 plus my edit'), null, 'edited draft hides undo');
+assert.deepEqual(pushUndoStack(one, { before: '润色稿', after: '' }), one, 'empty rewrite is not recorded');
+let many = [];
+for (let i = 0; i < UNDO_LIMIT + 5; i += 1) many = pushUndoStack(many, { before: `b${i}`, after: `a${i}` });
+assert.equal(many.length, UNDO_LIMIT, 'undo stack is capped');
+assert.equal(many[many.length - 1].after, `a${UNDO_LIMIT + 4}`, 'newest entry survives trimming');
+console.log('undo history: OK');
 console.log('CLIENT BUNDLE SMOKE PASS');

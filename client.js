@@ -88,6 +88,8 @@ window.__ModuleLoader__.load({
       'form.error.duplicate': '已有同名场景',
       'tip.scenarioPrefix': '场景：',
       'tip.badgeHint': '点击查看诊断',
+      'undo.label': '撤销润色',
+      'undo.hint': '把草稿恢复到这次润色之前',
     };
     const en = {
       'button.label': 'Optimize prompt',
@@ -135,6 +137,8 @@ window.__ModuleLoader__.load({
       'form.error.duplicate': 'A scenario with this name already exists',
       'tip.scenarioPrefix': 'Scenario: ',
       'tip.badgeHint': 'click for diagnosis',
+      'undo.label': 'Undo rewrite',
+      'undo.hint': 'Restore the draft from before this rewrite',
     };
 
     function fallbackT(key) {
@@ -195,6 +199,43 @@ window.__ModuleLoader__.load({
       .dsh-prompt-opt-badge:focus-visible {
         outline: 2px solid currentColor;
         outline-offset: 1px;
+      }
+      .dsh-prompt-opt-undo {
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        opacity: 0.55;
+        cursor: pointer;
+        flex: none;
+        animation: dsh-prompt-opt-fade-in 0.18s ease-out;
+        transition: opacity 0.15s ease, background-color 0.15s ease;
+      }
+      .dsh-prompt-opt-undo:hover:not([data-disabled="true"]) {
+        opacity: 0.95;
+        background: rgba(128, 128, 128, 0.16);
+      }
+      .dsh-prompt-opt-undo[data-disabled="true"] {
+        opacity: 0.25;
+        cursor: default;
+      }
+      .dsh-prompt-opt-undo:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 1px;
+      }
+      @keyframes dsh-prompt-opt-fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 0.55;
+        }
       }
       .dsh-prompt-opt-badge {
         display: inline-flex;
@@ -633,6 +674,26 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function UndoIcon() {
+      return h(
+        'svg',
+        { viewBox: '0 0 16 16', width: 15, height: 15, fill: 'none', 'aria-hidden': 'true', focusable: 'false' },
+        h('path', {
+          d: 'M3.2 7.2h5.1a3.2 3.2 0 0 1 0 6.4H5.4',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+        }),
+        h('path', {
+          d: 'M5.6 4.6 3 7.2l2.6 2.6',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        }),
+      );
+    }
+
     function CheckMark(props) {
       return h(
         'span',
@@ -691,6 +752,32 @@ window.__ModuleLoader__.load({
       return above
         ? { left: Math.round(left), bottom: Math.round(viewportHeight - rect.top + 10), width }
         : { left: Math.round(left), top: Math.round(rect.bottom + 10), width };
+    }
+
+    // ── undo history (in-memory, one entry per successful rewrite) ─────────
+    const UNDO_LIMIT = 10;
+
+    /** Append a { before, after } pair, dropping the oldest entries past the limit. */
+    function pushUndoStack(stack, entry) {
+      const next = Array.isArray(stack) ? stack.slice() : [];
+      const before = typeof entry?.before === 'string' ? entry.before : '';
+      const after = typeof entry?.after === 'string' ? entry.after : '';
+      if (after === '') return next;
+      next.push({ before, after });
+      return next.length > UNDO_LIMIT ? next.slice(next.length - UNDO_LIMIT) : next;
+    }
+
+    /**
+     * The entry an undo would restore right now: only the top one, and only while
+     * the draft is still exactly the rewritten text (if the user edited it since,
+     * undo would silently throw their edit away, so the button hides instead).
+     */
+    function topUndoEntry(stack, draft) {
+      if (!Array.isArray(stack) || stack.length === 0) return null;
+      const top = stack[stack.length - 1];
+      if (top === null || typeof top !== 'object') return null;
+      const current = typeof draft === 'string' ? draft.trim() : '';
+      return current !== '' && current === top.after.trim() ? top : null;
     }
 
     // ── scenario config (custom scenarios + preset overrides, persisted) ───
@@ -799,6 +886,7 @@ window.__ModuleLoader__.load({
       const [result, setResult] = React.useState(null);
       const [placement, setPlacement] = React.useState(null);
       const [tip, setTip] = React.useState(null);
+      const [undoStack, setUndoStack] = React.useState([]);
       const [config, setConfig] = React.useState(readScenarioConfig);
       const customs = config.custom;
       const [creating, setCreating] = React.useState(false);
@@ -1000,7 +1088,12 @@ window.__ModuleLoader__.load({
             const reason = data !== null && typeof data.error === 'string' ? data.error : `HTTP ${response.status}`;
             throw new Error(reason);
           }
-          inputActions.setDraft(data.text.trim());
+          const beforeDraft = text;
+          const afterDraft = data.text.trim();
+          inputActions.setDraft(afterDraft);
+          if (afterDraft !== beforeDraft.trim()) {
+            setUndoStack((stack) => pushUndoStack(stack, { before: beforeDraft, after: afterDraft }));
+          }
           setResult(data);
           setOpen(true);
         } catch (failure) {
@@ -1014,6 +1107,18 @@ window.__ModuleLoader__.load({
           setBusy(false);
         }
       }, [canWrite, config.presets, customs, empty, override, readRoute, text]);
+
+      // Undo is offered only while the draft is untouched since the rewrite, so a
+      // click never discards edits the user made afterwards.
+      const undoEntry = topUndoEntry(undoStack, text);
+      const undo = React.useCallback(() => {
+        const entry = topUndoEntry(undoStack, text);
+        if (entry === null || !canWrite) return;
+        inputActions.setDraft(entry.before);
+        setUndoStack((stack) => stack.slice(0, -1));
+        setResult(null);
+        setError('');
+      }, [canWrite, text, undoStack]);
 
       const editingPreset = editingId !== null && EDITABLE_PRESETS.includes(editingId) ? editingId : null;
 
@@ -1197,6 +1302,31 @@ window.__ModuleLoader__.load({
         h('span', { className: 'dsh-prompt-opt-badge-dot' }),
         h('span', null, badgeLabel),
       );
+
+      let undoButton = null;
+      if (undoEntry !== null) {
+        undoButton = h(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-prompt-opt-undo',
+            'aria-label': t('undo.label'),
+            'data-disabled': canWrite && !busy ? undefined : 'true',
+            onMouseDown: (event) => event.preventDefault(),
+            onMouseEnter: (event) => showTip('undo', event.currentTarget),
+            onMouseLeave: hideTip,
+            onFocus: (event) => showTip('undo', event.currentTarget),
+            onBlur: hideTip,
+            onClick: (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              hideTip();
+              undo();
+            },
+          },
+          h(UndoIcon),
+        );
+      }
 
       let panel = null;
       if (open && typeof document !== 'undefined') {
@@ -1555,7 +1685,12 @@ window.__ModuleLoader__.load({
 
       let tooltip = null;
       if (tip !== null && typeof document !== 'undefined' && typeof window !== 'undefined') {
-        const tipText = tip.kind === 'badge' ? `${t('tip.scenarioPrefix')}${badgeLabel} · ${t('tip.badgeHint')}` : label;
+        const tipText =
+          tip.kind === 'badge'
+            ? `${t('tip.scenarioPrefix')}${badgeLabel} · ${t('tip.badgeHint')}`
+            : tip.kind === 'undo'
+              ? `${t('undo.label')} · ${t('undo.hint')}`
+              : label;
         const left = Math.min(Math.max(tip.left, 140), Math.max(140, window.innerWidth - 140));
         tooltip = ReactDOM.createPortal(
           h(
@@ -1575,7 +1710,7 @@ window.__ModuleLoader__.load({
         React.Fragment,
         null,
         h('span', { ref: markerRef, hidden: true }),
-        ReactDOM.createPortal(h(React.Fragment, null, badge, button), host),
+        ReactDOM.createPortal(h(React.Fragment, null, badge, undoButton, button), host),
         panel,
         tooltip,
       );
@@ -1592,6 +1727,9 @@ window.__ModuleLoader__.load({
         createCustomId,
         CUSTOM_SCENARIOS_KEY,
         MAX_CUSTOM_SCENARIOS,
+        pushUndoStack,
+        topUndoEntry,
+        UNDO_LIMIT,
         zh,
         en,
       },

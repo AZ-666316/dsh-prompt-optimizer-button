@@ -1,6 +1,10 @@
-# v0.5.1 — 修复 opencode-go 等按会话路由的 provider（#1）
+# v0.5.1 — 撤销润色 + 修复 opencode-go 等按会话路由的 provider（#1）
 
-Patch release on top of 0.5.0. 修复 GitHub issue #1：在按会话路由的 `pi-ai` provider（如 OpenCode Go `opencode-go`）上，优化请求总是失败并报 `model returned no text`。
+Patch release on top of 0.5.0. 新增「撤销润色」，并修复 GitHub issue #1：在按会话路由的 `pi-ai` provider（如 OpenCode Go `opencode-go`）上，优化请求总是失败并报 `model returned no text`。
+
+## 新增
+
+- **撤销润色**：润色成功后，徽标与星星之间出现「↶」按钮，点一下把草稿恢复成这次润色之前的原文；连续撤销最多 10 步。仅在草稿仍是润色结果时出现——一旦你手动改过输入框或进行了下一次润色，当前这一步的撤销机会收起，避免覆盖你自己的编辑。
 
 ## 修复
 
